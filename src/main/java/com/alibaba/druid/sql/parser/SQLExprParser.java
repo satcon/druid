@@ -319,6 +319,7 @@ public class SQLExprParser extends SQLParser {
             case ESCAPE:
             case OVER:
             case ORDER:
+            case CONSTRAINT:
                 sqlExpr = new SQLIdentifierExpr(lexer.stringVal());
                 lexer.nextToken();
                 break;
@@ -455,6 +456,11 @@ public class SQLExprParser extends SQLParser {
                         break;
                     case LITERAL_FLOAT:
                         sqlExpr = new SQLNumberExpr(lexer.decimalValue());
+                        lexer.nextToken();
+                        break;
+                    case IDENTIFIER: // 当+号后面为字段的情况
+                        sqlExpr = new SQLIdentifierExpr(lexer.stringVal());
+                        sqlExpr = new SQLUnaryExpr(SQLUnaryOperator.Plus, sqlExpr);
                         lexer.nextToken();
                         break;
                     case LPAREN:
@@ -849,6 +855,8 @@ public class SQLExprParser extends SQLParser {
                 case OPTIMIZE:
                 case GRANT:
                 case REVOKE:
+                //binary有很多含义，lexer识别了这个token，实际上应该当做普通IDENTIFIER
+                case BINARY:
                     identName = lexer.stringVal();
                     lexer.nextToken();
                     break;
@@ -1420,6 +1428,11 @@ public class SQLExprParser extends SQLParser {
     }
 
     protected SQLDataType parseCharTypeRest(SQLCharacterDataType charType) {
+        if (lexer.token() == Token.BINARY) {
+            charType.setHasBinary(true);
+            lexer.nextToken();
+        }
+        
         if (identifierEquals("CHARACTER")) {
             lexer.nextToken();
 
@@ -1429,6 +1442,11 @@ public class SQLExprParser extends SQLParser {
                 throw new ParserException();
             }
             charType.setCharSetName(lexer.stringVal());
+            lexer.nextToken();
+        }
+        
+        if (lexer.token() == Token.BINARY) {
+            charType.setHasBinary(true);
             lexer.nextToken();
         }
         
@@ -1503,7 +1521,7 @@ public class SQLExprParser extends SQLParser {
             if (lexer.token() == Token.KEY) {
                 lexer.nextToken();
             }
-            column.getConstraints().add(new SQLColumnPrimaryKey());
+            column.getConstraints().add(new SQLColumnUniqueKey());
             return parseColumnRest(column);
         }
 
@@ -1634,8 +1652,14 @@ public class SQLExprParser extends SQLParser {
         } else {
             accept(Token.EQ);
         }
-        item.setValue(expr());
-
+        
+        if(lexer.token() == Token.ON) {
+            item.setValue(new SQLIdentifierExpr(lexer.stringVal()));
+            lexer.nextToken();
+        } else {
+            item.setValue(expr());
+        }
+        
         return item;
     }
 

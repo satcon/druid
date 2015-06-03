@@ -70,6 +70,7 @@ import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableStatemen
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlAlterUserStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlAnalyzeStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlBinlogStatement;
+import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlBlockStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlCommitStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlCreateIndexStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
@@ -266,11 +267,11 @@ public class MySqlStatementParser extends SQLStatementParser {
                     SQLTableSource tableSource = createSQLSelectParser().parseTableSource();
                     deleteStatement.setFrom(tableSource);
                 }
+            } else if (lexer.token() == Token.FROM) {
+                lexer.nextToken();
+                deleteStatement.setTableSource(createSQLSelectParser().parseTableSource());
             } else {
-                if (lexer.token() == Token.FROM) {
-                    lexer.nextToken();
-                    deleteStatement.setTableSource(createSQLSelectParser().parseTableSource());
-                }
+                throw new ParserException("syntax error");
             }
 
             if (identifierEquals("USING")) {
@@ -350,6 +351,13 @@ public class MySqlStatementParser extends SQLStatementParser {
             }
 
             return parseCreateView();
+        }
+        
+        if (lexer.token() == Token.TRIGGER) {
+            if (replace) {
+                lexer.reset(markBp, markChar, Token.CREATE);
+            }
+            return parseCreateTrigger();
         }
 
         throw new ParserException("TODO " + lexer.token());
@@ -673,8 +681,25 @@ public class MySqlStatementParser extends SQLStatementParser {
             statementList.add(this.parseHint());
             return true;
         }
+        
+        if (lexer.token() == Token.BEGIN) {
+            statementList.add(this.parseBlock());
+            return true;
+        }
 
         return false;
+    }
+    
+    public MySqlBlockStatement parseBlock() {
+        MySqlBlockStatement block = new MySqlBlockStatement();
+
+        accept(Token.BEGIN);
+
+        parseStatementList(block.getStatementList());
+
+        accept(Token.END);
+
+        return block;
     }
 
     public MySqlDescribeStatement parseDescribe() {
@@ -686,7 +711,9 @@ public class MySqlStatementParser extends SQLStatementParser {
 
         MySqlDescribeStatement stmt = new MySqlDescribeStatement();
         stmt.setObject(this.exprParser.name());
-
+        if (lexer.token() == Token.IDENTIFIER) {
+            stmt.setColName(this.exprParser.name());
+        }
         return stmt;
     }
 
@@ -1457,7 +1484,7 @@ public class MySqlStatementParser extends SQLStatementParser {
             SQLName table = exprParser.name();
             stmt.setTable(table);
 
-            if (lexer.token() == Token.FROM) {
+            if (lexer.token() == Token.FROM || lexer.token() == Token.IN) {
                 lexer.nextToken();
                 SQLName database = exprParser.name();
                 stmt.setDatabase(database);
@@ -1492,7 +1519,7 @@ public class MySqlStatementParser extends SQLStatementParser {
             stmt.setConsistentSnapshot(true);
         }
 
-        if (identifierEquals("BEGIN")) {
+        if (lexer.token() == Token.BEGIN) {
             lexer.nextToken();
             stmt.setBegin(true);
             if (identifierEquals("WORK")) {
@@ -2265,7 +2292,11 @@ public class MySqlStatementParser extends SQLStatementParser {
                         SQLAlterTableAddConstraint item = new SQLAlterTableAddConstraint(primaryKey);
                         stmt.getItems().add(item);
                     } else if (lexer.token() == Token.KEY) {
-                        throw new ParserException("TODO " + lexer.token() + " " + lexer.stringVal());
+                        // throw new ParserException("TODO " + lexer.token() +
+                        // " " + lexer.stringVal());
+                        SQLAlterTableAddIndex item = parseAlterTableAddIndex();
+                        item.setParent(stmt);
+                        stmt.getItems().add(item);
                     } else if (lexer.token() == Token.CONSTRAINT) {
                         lexer.nextToken();
                         SQLName constraintName = this.exprParser.name();

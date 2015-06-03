@@ -796,6 +796,9 @@ public class SQLStatementParser extends SQLParser {
                     if (lexer.token() == Token.COLUMN) {
                         SQLAlterTableAlterColumn alterColumn = parseAlterColumn();
                         stmt.getItems().add(alterColumn);
+                    } else if (lexer.token() == Token.LITERAL_ALIAS) {
+                        SQLAlterTableAlterColumn alterColumn = parseAlterColumn();
+                        stmt.getItems().add(alterColumn);
                     } else {
                         throw new ParserException("TODO " + lexer.token() + " " + lexer.stringVal());
                     }
@@ -862,6 +865,16 @@ public class SQLStatementParser extends SQLParser {
             stmt.getItems().add(item);
         } else if (lexer.token() == Token.COLUMN) {
             lexer.nextToken();
+            SQLAlterTableDropColumnItem item = new SQLAlterTableDropColumnItem();
+            this.exprParser.names(item.getColumns());
+            
+            if(lexer.token == Token.CASCADE) {
+                item.setCascade(true);
+                lexer.nextToken();
+            }
+            
+            stmt.getItems().add(item);
+        } else if (lexer.token() == Token.LITERAL_ALIAS) {
             SQLAlterTableDropColumnItem item = new SQLAlterTableDropColumnItem();
             this.exprParser.names(item.getColumns());
             
@@ -1409,8 +1422,11 @@ public class SQLStatementParser extends SQLParser {
             stmt.setForEachRow(true);
         }
 
-        SQLStatement body = this.parseBlock();
-        stmt.setBody(body);
+        List<SQLStatement> body = this.parseStatementList();
+        if(body == null || body.isEmpty()) {
+            throw new ParserException("syntax error");
+        }
+        stmt.setBody(body.get(0));
         return stmt;
     }
 
@@ -1642,6 +1658,9 @@ public class SQLStatementParser extends SQLParser {
             item.getColumns().add(columnDef);
             if (lexer.token() == Token.COMMA) {
                 lexer.nextToken();
+                if (identifierEquals("ADD")) {
+                    break;
+                }
                 continue;
             }
             break;
@@ -1685,10 +1704,20 @@ public class SQLStatementParser extends SQLParser {
             item.setUnique(true);
             lexer.nextToken();
             if (lexer.token() == Token.INDEX) {
+                item.setKeyOrIndex(Token.INDEX.name);
+                lexer.nextToken();
+            } else if (lexer.token() == Token.KEY) {
+                item.setKeyOrIndex(Token.KEY.name);
                 lexer.nextToken();
             }
         } else {
-            accept(Token.INDEX);
+            if (lexer.token() == Token.INDEX) {
+                item.setKeyOrIndex(Token.INDEX.name);
+                accept(Token.INDEX);
+            } else if (lexer.token() == Token.KEY) {
+                item.setKeyOrIndex(Token.KEY.name);
+                accept(Token.KEY);
+            }
         }
 
         if (lexer.token() == Token.LPAREN) {
