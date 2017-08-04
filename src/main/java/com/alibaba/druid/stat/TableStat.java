@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -184,6 +184,8 @@ public class TableStat {
 
         private String name;
 
+        private int hash;
+
         public Name(String name){
             this.name = name;
         }
@@ -193,7 +195,11 @@ public class TableStat {
         }
 
         public int hashCode() {
-            return StringUtils.lowerHashCode(name);
+            int h = hash;
+            if (h == 0 && name != null && name.length() > 0) {
+                hash = h = StringUtils.lowerHashCode(name);
+            }
+            return h;
         }
 
         public boolean equals(Object o) {
@@ -202,6 +208,14 @@ public class TableStat {
             }
 
             Name other = (Name) o;
+            
+            if (this.name == other.name) {
+                return true;
+            }
+            
+            if (this.name == null | other.name == null) {
+                return false;
+            }
 
             return this.name.equalsIgnoreCase(other.name);
         }
@@ -216,6 +230,10 @@ public class TableStat {
         private Column left;
         private Column right;
         private String operator;
+
+        public Relationship(){
+
+        }
 
         public Column getLeft() {
             return left;
@@ -393,7 +411,17 @@ public class TableStat {
         private boolean             having;
         private boolean             join;
 
+        private boolean             primaryKey; // for ddl
+        private boolean             unique; //
+
         private Map<String, Object> attributes = new HashMap<String, Object>();
+
+        private transient String    fullName;
+
+        /**
+         * @since 1.0.20
+         */
+        private String              dataType;
 
         public Column(){
 
@@ -410,6 +438,19 @@ public class TableStat {
 
         public void setTable(String table) {
             this.table = table;
+            this.fullName = null;
+        }
+
+        public String getFullName() {
+            if (fullName == null) {
+                if (table != null) {
+                    fullName = name;
+                } else {
+                    fullName = table + '.' + name;
+                }
+            }
+
+            return fullName;
         }
 
         public boolean isWhere() {
@@ -452,12 +493,43 @@ public class TableStat {
             this.having = having;
         }
 
+        public boolean isPrimaryKey() {
+            return primaryKey;
+        }
+
+        public void setPrimaryKey(boolean primaryKey) {
+            this.primaryKey = primaryKey;
+        }
+
+        public boolean isUnique() {
+            return unique;
+        }
+
+        public void setUnique(boolean unique) {
+            this.unique = unique;
+        }
+
         public String getName() {
             return name;
         }
 
         public void setName(String name) {
             this.name = name;
+            this.fullName = null;
+        }
+        
+        /**
+         * @since 1.0.20
+         */
+        public String getDataType() {
+            return dataType;
+        }
+
+        /**
+         * @since 1.0.20
+         */
+        public void setDataType(String dataType) {
+            this.dataType = dataType;
         }
 
         public Map<String, Object> getAttributes() {
@@ -485,7 +557,7 @@ public class TableStat {
 
         public boolean equals(Object obj) {
 
-            if (!(obj instanceof  Column)) {
+            if (!(obj instanceof Column)) {
                 return false;
             }
 
@@ -516,16 +588,17 @@ public class TableStat {
     }
 
     public static enum Mode {
-        Insert(1), //
-        Update(2), //
-        Delete(4), //
-        Select(8), //
-        Merge(16), //
-        Truncate(32), //
-        Alter(64), //
-        Drop(128), //
-        DropIndex(256), //
-        CreateIndex(512)//
+                             Insert(1), //
+                             Update(2), //
+                             Delete(4), //
+                             Select(8), //
+                             Merge(16), //
+                             Truncate(32), //
+                             Alter(64), //
+                             Drop(128), //
+                             DropIndex(256), //
+                             CreateIndex(512), //
+                             Replace(1024),
         ; //
 
         public final int mark;

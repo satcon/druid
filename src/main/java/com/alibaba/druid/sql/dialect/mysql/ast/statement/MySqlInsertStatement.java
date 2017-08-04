@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,39 +30,30 @@ public class MySqlInsertStatement extends SQLInsertStatement {
     private boolean             delayed            = false;
     private boolean             highPriority       = false;
     private boolean             ignore             = false;
-
-    private List<ValuesClause>  valuesList         = new ArrayList<ValuesClause>();
+    private boolean             rollbackOnFail     = false;
 
     private final List<SQLExpr> duplicateKeyUpdate = new ArrayList<SQLExpr>();
+
+    public void cloneTo(MySqlInsertStatement x) {
+        super.cloneTo(x);
+        x.lowPriority = lowPriority;
+        x.delayed = delayed;
+        x.highPriority = highPriority;
+        x.ignore = ignore;
+        x.rollbackOnFail = rollbackOnFail;
+
+        for (SQLExpr e : duplicateKeyUpdate) {
+            SQLExpr e2 = e.clone();
+            e2.setParent(x);
+            x.duplicateKeyUpdate.add(e2);
+        }
+    }
 
     public List<SQLExpr> getDuplicateKeyUpdate() {
         return duplicateKeyUpdate;
     }
 
-    public ValuesClause getValues() {
-        if (valuesList.size() == 0) {
-            return null;
-        }
-        return valuesList.get(0);
-    }
-
-    public void setValues(ValuesClause values) {
-        if (valuesList.size() == 0) {
-            valuesList.add(values);
-        } else {
-            valuesList.set(0, values);
-        }
-    }
-
-    public List<ValuesClause> getValuesList() {
-        return valuesList;
-    }
-
-    public void setValuesList(List<ValuesClause> valuesList) {
-		this.valuesList = valuesList;
-	}
-
-	public boolean isLowPriority() {
+    public boolean isLowPriority() {
         return lowPriority;
     }
 
@@ -94,6 +85,14 @@ public class MySqlInsertStatement extends SQLInsertStatement {
         this.ignore = ignore;
     }
 
+    public boolean isRollbackOnFail() {
+        return rollbackOnFail;
+    }
+
+    public void setRollbackOnFail(boolean rollbackOnFail) {
+        this.rollbackOnFail = rollbackOnFail;
+    }
+
     @Override
     protected void accept0(SQLASTVisitor visitor) {
         if (visitor instanceof MySqlASTVisitor) {
@@ -117,5 +116,11 @@ public class MySqlInsertStatement extends SQLInsertStatement {
         }
 
         visitor.endVisit(this);
+    }
+
+    public SQLInsertStatement clone() {
+        MySqlInsertStatement x = new MySqlInsertStatement();
+        cloneTo(x);
+        return x;
     }
 }

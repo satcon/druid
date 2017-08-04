@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,11 @@ package com.alibaba.druid.sql.ast.statement;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.alibaba.druid.sql.ast.SQLExpr;
 import com.alibaba.druid.sql.ast.SQLName;
 import com.alibaba.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLDDLStatement {
@@ -31,6 +34,9 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLDDLS
     private List<SQLSelectOrderByItem> items = new ArrayList<SQLSelectOrderByItem>();
 
     private String                     type;
+    
+    // for mysql
+    private String                     using;
 
     public SQLCreateIndexStatement(){
 
@@ -52,12 +58,28 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLDDLS
         this.table = table;
     }
 
+    public String getTableName() {
+        if (table instanceof SQLExprTableSource) {
+            SQLExpr expr = ((SQLExprTableSource) table).getExpr();
+            if (expr instanceof SQLIdentifierExpr) {
+                return ((SQLIdentifierExpr) expr).getName();
+            } else if (expr instanceof SQLPropertyExpr) {
+                return ((SQLPropertyExpr) expr).getName();
+            }
+        }
+
+        return null;
+    }
+
     public List<SQLSelectOrderByItem> getItems() {
         return items;
     }
 
-    public void setItems(List<SQLSelectOrderByItem> items) {
-        this.items = items;
+    public void addItem(SQLSelectOrderByItem item) {
+        if (item != null) {
+            item.setParent(this);
+        }
+        this.items.add(item);
     }
 
     public SQLName getName() {
@@ -75,6 +97,14 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLDDLS
     public void setType(String type) {
         this.type = type;
     }
+    
+    public String getUsing() {
+        return using;
+    }
+
+    public void setUsing(String using) {
+        this.using = using;
+    }
 
     @Override
     protected void accept0(SQLASTVisitor visitor) {
@@ -84,5 +114,44 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLDDLS
             acceptChild(visitor, getItems());
         }
         visitor.endVisit(this);
+    }
+
+    public String getSchema() {
+        SQLName name = null;
+        if (table instanceof SQLExprTableSource) {
+            SQLExpr expr = ((SQLExprTableSource) table).getExpr();
+            if (expr instanceof SQLName) {
+                name = (SQLName) expr;
+            }
+        }
+
+        if (name == null) {
+            return null;
+        }
+
+        if (name instanceof SQLPropertyExpr) {
+            return ((SQLPropertyExpr) name).getOwnernName();
+        }
+
+        return null;
+    }
+
+
+    public SQLCreateIndexStatement clone() {
+        SQLCreateIndexStatement x = new SQLCreateIndexStatement();
+        if (name != null) {
+            x.setName(name.clone());
+        }
+        if (table != null) {
+            x.setTable(table.clone());
+        }
+        for (SQLSelectOrderByItem item : items) {
+            SQLSelectOrderByItem item2 = item.clone();
+            item2.setParent(x);
+            x.items.add(item2);
+        }
+        x.type = type;
+        x.using = using;
+        return x;
     }
 }

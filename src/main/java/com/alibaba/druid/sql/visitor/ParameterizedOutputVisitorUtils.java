@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,33 +15,23 @@
  */
 package com.alibaba.druid.sql.visitor;
 
+import java.util.ArrayList;
 import java.util.List;
 
-import com.alibaba.druid.sql.ast.SQLDataType;
-import com.alibaba.druid.sql.ast.SQLExpr;
-import com.alibaba.druid.sql.ast.SQLObject;
-import com.alibaba.druid.sql.ast.SQLStatement;
-import com.alibaba.druid.sql.ast.expr.SQLBinaryOpExpr;
-import com.alibaba.druid.sql.ast.expr.SQLBinaryOperator;
-import com.alibaba.druid.sql.ast.expr.SQLCharExpr;
-import com.alibaba.druid.sql.ast.expr.SQLHexExpr;
-import com.alibaba.druid.sql.ast.expr.SQLInListExpr;
-import com.alibaba.druid.sql.ast.expr.SQLIntegerExpr;
-import com.alibaba.druid.sql.ast.expr.SQLLiteralExpr;
-import com.alibaba.druid.sql.ast.expr.SQLNCharExpr;
-import com.alibaba.druid.sql.ast.expr.SQLNullExpr;
-import com.alibaba.druid.sql.ast.expr.SQLNumberExpr;
-import com.alibaba.druid.sql.ast.expr.SQLVariantRefExpr;
+import com.alibaba.druid.sql.ast.*;
+import com.alibaba.druid.sql.ast.expr.*;
 import com.alibaba.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.druid.sql.ast.statement.SQLSelectOrderByItem;
-import com.alibaba.druid.sql.dialect.db2.visitor.DB2ParameterizedOutputVisitor;
-import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlParameterizedOutputVisitor;
+import com.alibaba.druid.sql.dialect.db2.visitor.DB2OutputVisitor;
+import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlOutputVisitor;
 import com.alibaba.druid.sql.dialect.oracle.visitor.OracleParameterizedOutputVisitor;
-import com.alibaba.druid.sql.dialect.postgresql.visitor.PGParameterizedOutputVisitor;
+import com.alibaba.druid.sql.dialect.phoenix.visitor.PhoenixOutputVisitor;
+import com.alibaba.druid.sql.dialect.postgresql.visitor.PGOutputVisitor;
 import com.alibaba.druid.sql.dialect.sqlserver.ast.SQLServerTop;
-import com.alibaba.druid.sql.dialect.sqlserver.visitor.SQLServerParameterizedOutputVisitor;
+import com.alibaba.druid.sql.dialect.sqlserver.visitor.SQLServerOutputVisitor;
 import com.alibaba.druid.sql.parser.SQLParserUtils;
 import com.alibaba.druid.sql.parser.SQLStatementParser;
+import com.alibaba.druid.util.JdbcConstants;
 import com.alibaba.druid.util.JdbcUtils;
 
 public class ParameterizedOutputVisitorUtils {
@@ -55,6 +45,30 @@ public class ParameterizedOutputVisitorUtils {
             return sql;
         }
 
+        StringBuilder out = new StringBuilder(sql.length());
+        ParameterizedVisitor visitor = createParameterizedOutputVisitor(out, dbType);
+
+        for (int i = 0; i < statementList.size(); i++) {
+            if (i > 0) {
+                out.append(";\n");
+            }
+            SQLStatement stmt = statementList.get(i);
+
+            if (stmt.hasBeforeComment()) {
+                stmt.getBeforeCommentsDirect().clear();
+            }
+            stmt.accept(visitor);
+        }
+
+        if (visitor.getReplaceCount() == 0
+                && parser.getLexer().getCommentCount() == 0) {
+            return sql;
+        }
+
+        return out.toString();
+    }
+
+    public static String parameterize(List<SQLStatement> statementList, String dbType) {
         StringBuilder out = new StringBuilder();
         ParameterizedVisitor visitor = createParameterizedOutputVisitor(out, dbType);
 
@@ -63,11 +77,11 @@ public class ParameterizedOutputVisitorUtils {
                 out.append(";\n");
             }
             SQLStatement stmt = statementList.get(i);
-            stmt.accept(visitor);
-        }
 
-        if (visitor.getReplaceCount() == 0 && !parser.getLexer().isHasComment()) {
-            return sql;
+            if (stmt.hasBeforeComment()) {
+                stmt.getBeforeCommentsDirect().clear();
+            }
+            stmt.accept(visitor);
         }
 
         return out.toString();
@@ -78,82 +92,32 @@ public class ParameterizedOutputVisitorUtils {
             return new OracleParameterizedOutputVisitor(out);
         }
 
-        if (JdbcUtils.MYSQL.equals(dbType)) {
-            return new MySqlParameterizedOutputVisitor(out);
+        if (JdbcUtils.MYSQL.equals(dbType)
+            || JdbcUtils.MARIADB.equals(dbType)
+            || JdbcUtils.H2.equals(dbType)) {
+            return new MySqlOutputVisitor(out, true);
         }
 
-        if (JdbcUtils.MARIADB.equals(dbType)) {
-            return new MySqlParameterizedOutputVisitor(out);
-        }
-
-        if (JdbcUtils.H2.equals(dbType)) {
-            return new MySqlParameterizedOutputVisitor(out);
-        }
-
-        if (JdbcUtils.POSTGRESQL.equals(dbType)) {
-            return new PGParameterizedOutputVisitor(out);
+        if (JdbcUtils.POSTGRESQL.equals(dbType)
+                || JdbcUtils.ENTERPRISEDB.equals(dbType)) {
+            return new PGOutputVisitor(out, true);
         }
 
         if (JdbcUtils.SQL_SERVER.equals(dbType) || JdbcUtils.JTDS.equals(dbType)) {
-            return new SQLServerParameterizedOutputVisitor(out);
+            return new SQLServerOutputVisitor(out, true);
         }
 
         if (JdbcUtils.DB2.equals(dbType)) {
-            return new DB2ParameterizedOutputVisitor(out);
+            return new DB2OutputVisitor(out, true);
         }
 
-        return new ParameterizedOutputVisitor(out);
+        if (JdbcUtils.PHOENIX.equals(dbType)) {
+            return new PhoenixOutputVisitor(out, true);
+        }
+
+        return new SQLASTOutputVisitor(out, true);
     }
-
-    public static boolean visit(ParameterizedVisitor v, SQLInListExpr x) {
-        List<SQLExpr> targetList = x.getTargetList();
-
-        boolean changed = true;
-        if (targetList.size() == 1 && targetList.get(0) instanceof SQLVariantRefExpr) {
-            changed = false;
-        }
-
-        x.getExpr().accept(v);
-
-        if (x.isNot()) {
-            v.print(" NOT IN (?)");
-        } else {
-            v.print(" IN (?)");
-        }
-
-        if (changed) {
-            v.incrementReplaceCunt();
-        }
-
-        return false;
-    }
-
-    public static boolean visit(ParameterizedVisitor v, SQLIntegerExpr x) {
-        if (!checkParameterize(x)) {
-            return SQLASTOutputVisitorUtils.visit(v, x);
-        }
-
-        v.print('?');
-        v.incrementReplaceCunt();
-        return false;
-    }
-
-    public static boolean visit(ParameterizedVisitor v, SQLNumberExpr x) {
-        if (!checkParameterize(x)) {
-            return SQLASTOutputVisitorUtils.visit(v, x);
-        }
-
-        v.print('?');
-        v.incrementReplaceCunt();
-        return false;
-    }
-
-    public static boolean visit(ParameterizedVisitor v, SQLCharExpr x) {
-        v.print('?');
-        v.incrementReplaceCunt();
-        return false;
-    }
-
+   
     public static boolean checkParameterize(SQLObject x) {
         if (Boolean.TRUE.equals(x.getAttribute(ParameterizedOutputVisitorUtils.ATTR_PARAMS_SKIP))) {
             return false;
@@ -164,7 +128,7 @@ public class ParameterizedOutputVisitorUtils {
         if (parent instanceof SQLDataType //
             || parent instanceof SQLColumnDefinition //
             || parent instanceof SQLServerTop //
-            //|| parent instanceof SQLAssignItem //
+            || parent instanceof SQLAggregateExpr //
             || parent instanceof SQLSelectOrderByItem //
         ) {
             return false;
@@ -173,38 +137,24 @@ public class ParameterizedOutputVisitorUtils {
         return true;
     }
 
-    public static boolean visit(ParameterizedVisitor v, SQLNCharExpr x) {
-        v.print('?');
-        v.incrementReplaceCunt();
-        return false;
-    }
-
-    public static boolean visit(ParameterizedVisitor v, SQLNullExpr x) {
-        SQLObject parent = x.getParent();
-        if (parent instanceof SQLBinaryOpExpr) {
-            SQLBinaryOpExpr binaryOpExpr = (SQLBinaryOpExpr) parent;
-            if (binaryOpExpr.getOperator() == SQLBinaryOperator.IsNot
-                || binaryOpExpr.getOperator() == SQLBinaryOperator.Is) {
-                v.print("NULL");
-                return false;
-            }
-        }
-
-        v.print('?');
-        v.incrementReplaceCunt();
-        return false;
-    }
-
     public static boolean visit(ParameterizedVisitor v, SQLVariantRefExpr x) {
         v.print('?');
         v.incrementReplaceCunt();
+
+        if (v instanceof ExportParameterVisitor) {
+            ExportParameterVisitorUtils.exportParameter(((ExportParameterVisitor)v).getParameters(), x);
+        }
         return false;
     }
-    
-    public static boolean visit(ParameterizedVisitor v, SQLHexExpr x) {
-        v.print('?');
-        v.incrementReplaceCunt();
-        return false;
+
+    public final static String ATTR_MERGED = "parameterized.mergedList";
+    static void putMergedArribute(SQLObject object, SQLObject item) {
+        List<SQLObject> mergedList = (List<SQLObject>) object.getAttribute(ATTR_MERGED);
+        if (mergedList == null) {
+            mergedList = new ArrayList<SQLObject>();
+            object.putAttribute(ATTR_MERGED, mergedList);
+        }
+        mergedList.add(item);
     }
 
     public static SQLBinaryOpExpr merge(ParameterizedVisitor v, SQLBinaryOpExpr x) {
@@ -213,8 +163,10 @@ public class ParameterizedOutputVisitorUtils {
         SQLObject parent = x.getParent();
 
         if (left instanceof SQLLiteralExpr && right instanceof SQLLiteralExpr) {
-            if (x.getOperator() == SQLBinaryOperator.Equality //
-                || x.getOperator() == SQLBinaryOperator.NotEqual) {
+            SQLBinaryOperator op = x.getOperator();
+            if (op == SQLBinaryOperator.Equality
+                    || op == SQLBinaryOperator.NotEqual
+                    || op == SQLBinaryOperator.LessThanOrGreater) {
                 if((left instanceof SQLIntegerExpr) && (right instanceof SQLIntegerExpr) ) {
                     if (((SQLIntegerExpr) left).getNumber().intValue() < 100) {
                         left.putAttribute(ATTR_PARAMS_SKIP, true);
@@ -254,27 +206,31 @@ public class ParameterizedOutputVisitorUtils {
         if (x.getLeft() instanceof SQLBinaryOpExpr) {
             SQLExpr mergedLeft = merge(v, (SQLBinaryOpExpr) x.getLeft());
             if (mergedLeft != x.getLeft()) {
-                x = new SQLBinaryOpExpr(mergedLeft, x.getOperator(), x.getRight());
+                SQLBinaryOpExpr tmp = new SQLBinaryOpExpr(mergedLeft, x.getOperator(), x.getRight());
+                tmp.setParent(parent);
+                x = tmp;
                 v.incrementReplaceCunt();
             }
-            x.setParent(parent);
         }
 
         // ID = ? OR ID = ? => ID = ?
         if (x.getOperator() == SQLBinaryOperator.BooleanOr) {
-            if ((left instanceof SQLBinaryOpExpr) && (right instanceof SQLBinaryOpExpr)) {
+            if ((x.getLeft() instanceof SQLBinaryOpExpr) && (x.getRight() instanceof SQLBinaryOpExpr)) {
                 SQLBinaryOpExpr leftBinary = (SQLBinaryOpExpr) x.getLeft();
                 SQLBinaryOpExpr rightBinary = (SQLBinaryOpExpr) x.getRight();
 
                 if (mergeEqual(leftBinary, rightBinary)) {
                     v.incrementReplaceCunt();
+                    leftBinary.setParent(x.getParent());
+                    putMergedArribute(leftBinary, rightBinary);
                     return leftBinary;
                 }
 
                 if (isLiteralExpr(leftBinary.getLeft()) //
                     && leftBinary.getOperator() == SQLBinaryOperator.BooleanOr) {
-                    if (mergeEqual(leftBinary.getRight(), right)) {
+                    if (mergeEqual(leftBinary.getRight(), x.getRight())) {
                         v.incrementReplaceCunt();
+                        putMergedArribute(leftBinary, rightBinary);
                         return leftBinary;
                     }
                 }

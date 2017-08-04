@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ import java.util.List;
 
 import com.alibaba.druid.sql.ast.SQLExpr;
 import com.alibaba.druid.sql.ast.SQLName;
+import com.alibaba.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.druid.sql.ast.statement.SQLSelectOrderByItem;
 import com.alibaba.druid.sql.ast.statement.SQLTableElement;
 import com.alibaba.druid.sql.dialect.mysql.ast.MySqlObjectImpl;
 import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
@@ -28,7 +30,7 @@ public class MySqlTableIndex extends MySqlObjectImpl implements SQLTableElement 
 
     private SQLName       name;
     private String        indexType;
-    private List<SQLExpr> columns = new ArrayList<SQLExpr>();
+    private List<SQLSelectOrderByItem> columns = new ArrayList<SQLSelectOrderByItem>();
 
     public MySqlTableIndex(){
 
@@ -50,8 +52,15 @@ public class MySqlTableIndex extends MySqlObjectImpl implements SQLTableElement 
         this.name = name;
     }
 
-    public List<SQLExpr> getColumns() {
+    public List<SQLSelectOrderByItem> getColumns() {
         return columns;
+    }
+    
+    public void addColumn(SQLSelectOrderByItem column) {
+        if (column != null) {
+            column.setParent(this);
+        }
+        this.columns.add(column);
     }
 
     public void accept0(MySqlASTVisitor visitor) {
@@ -60,5 +69,19 @@ public class MySqlTableIndex extends MySqlObjectImpl implements SQLTableElement 
             acceptChild(visitor, columns);
         }
         visitor.endVisit(this);
+    }
+
+    public MySqlTableIndex clone() {
+        MySqlTableIndex x = new MySqlTableIndex();
+        if (name != null) {
+            x.setName(name.clone());
+        }
+        x.indexType = indexType;
+        for (SQLSelectOrderByItem column : columns) {
+            SQLSelectOrderByItem c2 = column.clone();
+            c2.setParent(x);
+            x.columns.add(c2);
+        }
+        return x;
     }
 }

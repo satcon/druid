@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,17 +19,21 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.alibaba.druid.sql.SQLUtils;
 import com.alibaba.druid.sql.ast.SQLExpr;
 import com.alibaba.druid.sql.ast.SQLExprImpl;
+import com.alibaba.druid.sql.ast.SQLReplaceable;
 import com.alibaba.druid.sql.dialect.oracle.visitor.OracleASTVisitor;
 import com.alibaba.druid.sql.visitor.SQLASTVisitor;
 
-public class SQLMethodInvokeExpr extends SQLExprImpl implements Serializable {
+public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, Serializable {
 
     private static final long   serialVersionUID = 1L;
     private String              methodName;
     private SQLExpr             owner;
     private final List<SQLExpr> parameters       = new ArrayList<SQLExpr>();
+
+    private SQLExpr             from;
 
     public SQLMethodInvokeExpr(){
 
@@ -43,6 +47,14 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements Serializable {
 
         this.methodName = methodName;
         setOwner(owner);
+    }
+
+    public SQLMethodInvokeExpr(String methodName, SQLExpr owner, SQLExpr... params){
+        this.methodName = methodName;
+        setOwner(owner);
+        for (SQLExpr param : params) {
+            this.addParameter(param);
+        }
     }
 
     public String getMethodName() {
@@ -62,6 +74,14 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements Serializable {
             owner.setParent(this);
         }
         this.owner = owner;
+    }
+
+    public SQLExpr getFrom() {
+        return from;
+    }
+
+    public void setFrom(SQLExpr from) {
+        this.from = from;
     }
 
     public List<SQLExpr> getParameters() {
@@ -113,48 +133,81 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements Serializable {
     }
 
     @Override
-    public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ((methodName == null) ? 0 : methodName.hashCode());
-        result = prime * result + ((owner == null) ? 0 : owner.hashCode());
-        result = prime * result + ((parameters == null) ? 0 : parameters.hashCode());
-        return result;
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        SQLMethodInvokeExpr that = (SQLMethodInvokeExpr) o;
+
+        if (methodName != null ? !methodName.equals(that.methodName) : that.methodName != null) return false;
+        if (owner != null ? !owner.equals(that.owner) : that.owner != null) return false;
+        if (parameters != null ? !parameters.equals(that.parameters) : that.parameters != null) return false;
+        return from != null ? from.equals(that.from) : that.from == null;
+
     }
 
     @Override
-    public boolean equals(Object obj) {
-        if (this == obj) {
+    public int hashCode() {
+        int result = methodName != null ? methodName.hashCode() : 0;
+        result = 31 * result + (owner != null ? owner.hashCode() : 0);
+        result = 31 * result + (parameters != null ? parameters.hashCode() : 0);
+        result = 31 * result + (from != null ? from.hashCode() : 0);
+        return result;
+    }
+
+    public SQLMethodInvokeExpr clone() {
+        SQLMethodInvokeExpr x = new SQLMethodInvokeExpr();
+
+        x.methodName = methodName;
+
+        if (owner != null) {
+            x.setOwner(owner.clone());
+        }
+
+        for (SQLExpr param : parameters) {
+            x.addParameter(param.clone());
+        }
+
+        if (from != null) {
+            x.setFrom(from.clone());
+        }
+
+        return x;
+    }
+
+    @Override
+    public boolean replace(SQLExpr expr, SQLExpr target) {
+        for (int i = 0; i < parameters.size(); ++i) {
+            if (parameters.get(i) == expr) {
+                parameters.set(i, target);
+                target.setParent(this);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean match(String owner, String function) {
+        if (function == null) {
+            return false;
+        }
+
+        if (!SQLUtils.nameEquals(function, methodName)) {
+            return false;
+        }
+
+        if (owner == null && this.owner == null) {
             return true;
         }
-        if (obj == null) {
+
+        if (owner == null || this.owner == null) {
             return false;
         }
-        if (getClass() != obj.getClass()) {
-            return false;
+
+        if (this.owner instanceof SQLIdentifierExpr) {
+            return SQLUtils.nameEquals(((SQLIdentifierExpr) this.owner).name, owner);
         }
-        SQLMethodInvokeExpr other = (SQLMethodInvokeExpr) obj;
-        if (methodName == null) {
-            if (other.methodName != null) {
-                return false;
-            }
-        } else if (!methodName.equals(other.methodName)) {
-            return false;
-        }
-        if (owner == null) {
-            if (other.owner != null) {
-                return false;
-            }
-        } else if (!owner.equals(other.owner)) {
-            return false;
-        }
-        if (parameters == null) {
-            if (other.parameters != null) {
-                return false;
-            }
-        } else if (!parameters.equals(other.parameters)) {
-            return false;
-        }
-        return true;
+
+        return false;
     }
 }

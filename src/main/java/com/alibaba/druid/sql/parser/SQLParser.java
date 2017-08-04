@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ public class SQLParser {
     protected String      dbType;
 
     public SQLParser(String sql, String dbType){
-        this(new Lexer(sql), dbType);
+        this(new Lexer(sql, null, dbType), dbType);
         this.lexer.nextToken();
     }
 
@@ -56,102 +56,53 @@ public class SQLParser {
             lexer.nextToken();
         } else {
             setErrorEndPos(lexer.pos());
-            throw new ParserException("syntax error, expect " + text + ", actual " + lexer.token());
+            throw new ParserException("syntax error, expect " + text + ", actual " + lexer.token() + ", " + lexer.info());
         }
+    }
+
+    protected String tableAlias() {
+        return tableAlias(false);
+    }
+
+    protected String tableAlias(boolean must) {
+        final Token token = lexer.token();
+        if (token == Token.CONNECT
+                || token == Token.START
+                || token == Token.SELECT
+                || token == Token.FROM
+                || token == Token.WHERE) {
+            if (must) {
+                throw new ParserException("illegal alias. " + lexer.info());
+            }
+            return null;
+        }
+
+        if (token == Token.IDENTIFIER) {
+            String ident = lexer.stringVal;
+            if (ident.equalsIgnoreCase("START") || ident.equalsIgnoreCase("CONNECT")) {
+                if (must) {
+                    throw new ParserException("illegal alias. " + lexer.info());
+                }
+                return null;
+            }
+        }
+
+        return this.as();
     }
 
     protected String as() {
         String alias = null;
 
-        if (lexer.token() == Token.AS) {
+        final Token token = lexer.token();
+
+        if (token == Token.COMMA) {
+            return null;
+        }
+
+        if (token == Token.AS) {
             lexer.nextToken();
 
-            if (lexer.token() == Token.LITERAL_ALIAS) {
-                alias = '"' + lexer.stringVal() + '"';
-                lexer.nextToken();
-            } else if (lexer.token() == Token.IDENTIFIER) {
-                alias = lexer.stringVal();
-                lexer.nextToken();
-            } else if (lexer.token() == Token.LITERAL_CHARS) {
-                alias = "'" + lexer.stringVal() + "'";
-                lexer.nextToken();
-            } else {
-                switch (lexer.token()) {
-                    case KEY:
-                    case INDEX:
-                    case CASE:
-                    case MODEL:
-                    case PCTFREE:
-                    case INITRANS:
-                    case MAXTRANS:
-                    case SEGMENT:
-                    case CREATION:
-                    case IMMEDIATE:
-                    case DEFERRED:
-                    case STORAGE:
-                    case NEXT:
-                    case MINEXTENTS:
-                    case MAXEXTENTS:
-                    case MAXSIZE:
-                    case PCTINCREASE:
-                    case FLASH_CACHE:
-                    case CELL_FLASH_CACHE:
-                    case KEEP:
-                    case NONE:
-                    case LOB:
-                    case STORE:
-                    case ROW:
-                    case CHUNK:
-                    case CACHE:
-                    case NOCACHE:
-                    case LOGGING:
-                    case NOCOMPRESS:
-                    case KEEP_DUPLICATES:
-                    case EXCEPTIONS:
-                    case PURGE:
-                    case INITIALLY:
-                    case END:
-                    case COMMENT:
-                    case ENABLE:
-                    case DISABLE:
-                    case SEQUENCE:
-                    case USER:
-                    case ANALYZE:
-                    case OPTIMIZE:
-                    case GRANT:
-                    case REVOKE:
-                    case FULL:
-                    case TO:
-                    case NEW:
-                    case INTERVAL:
-                    case LOCK:
-                    case LIMIT:
-                    case IDENTIFIED:
-                    case PASSWORD:
-                    case BINARY:
-                    case WINDOW:
-                    case OFFSET:
-                    case SHARE:
-                    case START:
-                    case CONNECT:
-                    case MATCHED:
-                    case ERRORS:
-                    case REJECT:
-                    case UNLIMITED:
-                    case BEGIN:
-                    case EXCLUSIVE:
-                    case MODE:
-                    case ADVISE:
-                        alias = lexer.stringVal();
-                        lexer.nextToken();
-                        return alias;
-                    case QUES:
-                        alias = "?";
-                        lexer.nextToken();
-                    default:
-                        break;
-                }
-            }
+            alias = alias();
 
             if (alias != null) {
                 while (lexer.token() == Token.DOT) {
@@ -167,7 +118,7 @@ public class SQLParser {
                 return null;
             }
 
-            throw new ParserException("Error : " + lexer.token());
+            throw new ParserException("Error : " + lexer.info());
         }
 
         if (lexer.token() == Token.LITERAL_ALIAS) {
@@ -179,16 +130,22 @@ public class SQLParser {
         } else if (lexer.token() == Token.LITERAL_CHARS) {
             alias = "'" + lexer.stringVal() + "'";
             lexer.nextToken();
-        } else if (lexer.token() == Token.CASE) {
-            alias = lexer.token.name();
-            lexer.nextToken();
-        } else if (lexer.token() == Token.USER) {
-            alias = lexer.stringVal();
-            lexer.nextToken();
-        } else if (lexer.token() == Token.END) {
-            alias = lexer.stringVal();
-            lexer.nextToken();
-        } 
+        } else {
+            switch (lexer.token()) {
+                case CASE:
+                case USER:
+                case LOB:
+                case END:
+                case DEFERRED:
+                case OUTER:
+                case DO:
+                    alias = lexer.stringVal();
+                    lexer.nextToken();
+                    break;
+                default:
+                    break;
+            }
+        }
 
         switch (lexer.token()) {
             case KEY:
@@ -201,6 +158,98 @@ public class SQLParser {
                 break;
         }
 
+        return alias;
+    }
+
+    protected String alias() {
+        String alias = null;
+        if (lexer.token() == Token.LITERAL_ALIAS) {
+            alias = '"' + lexer.stringVal() + '"';
+            lexer.nextToken();
+        } else if (lexer.token() == Token.IDENTIFIER) {
+            alias = lexer.stringVal();
+            lexer.nextToken();
+        } else if (lexer.token() == Token.LITERAL_CHARS) {
+            alias = "'" + lexer.stringVal() + "'";
+            lexer.nextToken();
+        } else {
+            switch (lexer.token()) {
+                case KEY:
+                case INDEX:
+                case CASE:
+                case MODEL:
+                case PCTFREE:
+                case INITRANS:
+                case MAXTRANS:
+                case SEGMENT:
+                case CREATION:
+                case IMMEDIATE:
+                case DEFERRED:
+                case STORAGE:
+                case NEXT:
+                case MINEXTENTS:
+                case MAXEXTENTS:
+                case MAXSIZE:
+                case PCTINCREASE:
+                case FLASH_CACHE:
+                case CELL_FLASH_CACHE:
+                case NONE:
+                case LOB:
+                case STORE:
+                case ROW:
+                case CHUNK:
+                case CACHE:
+                case NOCACHE:
+                case LOGGING:
+                case NOCOMPRESS:
+                case KEEP_DUPLICATES:
+                case EXCEPTIONS:
+                case PURGE:
+                case INITIALLY:
+                case END:
+                case COMMENT:
+                case ENABLE:
+                case DISABLE:
+                case SEQUENCE:
+                case USER:
+                case ANALYZE:
+                case OPTIMIZE:
+                case GRANT:
+                case REVOKE:
+                case FULL:
+                case TO:
+                case NEW:
+                case INTERVAL:
+                case LOCK:
+                case LIMIT:
+                case IDENTIFIED:
+                case PASSWORD:
+                case BINARY:
+                case WINDOW:
+                case OFFSET:
+                case SHARE:
+                case START:
+                case CONNECT:
+                case MATCHED:
+                case ERRORS:
+                case REJECT:
+                case UNLIMITED:
+                case BEGIN:
+                case EXCLUSIVE:
+                case MODE:
+                case ADVISE:
+                case TYPE:
+                case CLOSE:
+                    alias = lexer.stringVal();
+                    lexer.nextToken();
+                    return alias;
+                case QUES:
+                    alias = "?";
+                    lexer.nextToken();
+                default:
+                    break;
+            }
+        }
         return alias;
     }
 
@@ -228,7 +277,7 @@ public class SQLParser {
         // + token + ", actual " + lexer.token() + " "
         // + lexer.stringVal() + ", pos " + this.lexer.pos());
         throw new ParserException("syntax error, error in :'" + arround + "',expect " + token + ", actual "
-                                  + lexer.token() + " " + lexer.stringVal());
+                                  + lexer.token() + " " + lexer.info());
     }
 
     public void accept(Token token) {
@@ -240,10 +289,21 @@ public class SQLParser {
         }
     }
 
+    public int acceptInteger() {
+        if (lexer.token() == Token.LITERAL_INT) {
+            int intVal = ((Integer) lexer.integerValue()).intValue();
+            lexer.nextToken();
+            return intVal;
+        } else {
+            throw new ParserException("syntax error, expect int, actual " + lexer.token() + " "
+                    + lexer.info());
+        }
+    }
+
     public void match(Token token) {
         if (lexer.token() != token) {
             throw new ParserException("syntax error, expect " + token + ", actual " + lexer.token() + " "
-                                      + lexer.stringVal());
+                                      + lexer.info());
         }
     }
 

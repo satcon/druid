@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,30 +15,35 @@
  */
 package com.alibaba.druid.sql.dialect.mysql.ast.statement;
 
+import com.alibaba.druid.sql.ast.SQLExpr;
 import com.alibaba.druid.sql.ast.SQLOrderBy;
 import com.alibaba.druid.sql.ast.statement.SQLUpdateStatement;
-import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock.Limit;
+import com.alibaba.druid.sql.ast.SQLLimit;
 import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 import com.alibaba.druid.sql.visitor.SQLASTVisitor;
 import com.alibaba.druid.util.JdbcConstants;
 
 public class MySqlUpdateStatement extends SQLUpdateStatement implements MySqlStatement {
 
-    private SQLOrderBy orderBy;
-    private Limit      limit;
+    private SQLOrderBy          orderBy;
+    private SQLLimit limit;
 
-    private boolean    lowPriority = false;
-    private boolean    ignore      = false;
-    
-    public MySqlUpdateStatement() {
-        super (JdbcConstants.MYSQL);
+    private boolean             lowPriority     = false;
+    private boolean             ignore          = false;
+    private boolean             commitOnSuccess = false;
+    private boolean             rollBackOnFail  = false;
+    private boolean             queryOnPk       = false;
+    private SQLExpr             targetAffectRow;
+
+    public MySqlUpdateStatement(){
+        super(JdbcConstants.MYSQL);
     }
 
-    public Limit getLimit() {
+    public SQLLimit getLimit() {
         return limit;
     }
 
-    public void setLimit(Limit limit) {
+    public void setLimit(SQLLimit limit) {
         if (limit != null) {
             limit.setParent(this);
         }
@@ -79,6 +84,41 @@ public class MySqlUpdateStatement extends SQLUpdateStatement implements MySqlSta
 
     public void setIgnore(boolean ignore) {
         this.ignore = ignore;
+    }
+
+    public boolean isCommitOnSuccess() {
+        return commitOnSuccess;
+    }
+
+    public void setCommitOnSuccess(boolean commitOnSuccess) {
+        this.commitOnSuccess = commitOnSuccess;
+    }
+
+    public boolean isRollBackOnFail() {
+        return rollBackOnFail;
+    }
+
+    public void setRollBackOnFail(boolean rollBackOnFail) {
+        this.rollBackOnFail = rollBackOnFail;
+    }
+
+    public boolean isQueryOnPk() {
+        return queryOnPk;
+    }
+
+    public void setQueryOnPk(boolean queryOnPk) {
+        this.queryOnPk = queryOnPk;
+    }
+
+    public SQLExpr getTargetAffectRow() {
+        return targetAffectRow;
+    }
+
+    public void setTargetAffectRow(SQLExpr targetAffectRow) {
+        if (targetAffectRow != null) {
+            targetAffectRow.setParent(this);
+        }
+        this.targetAffectRow = targetAffectRow;
     }
 
     public SQLOrderBy getOrderBy() {

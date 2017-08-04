@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,26 @@ package com.alibaba.druid.sql.dialect.postgresql.parser;
 
 import com.alibaba.druid.sql.ast.SQLDataType;
 import com.alibaba.druid.sql.ast.SQLExpr;
-import com.alibaba.druid.sql.ast.expr.*;
-import com.alibaba.druid.sql.dialect.postgresql.ast.PGOrderBy;
-import com.alibaba.druid.sql.dialect.postgresql.ast.expr.*;
+import com.alibaba.druid.sql.ast.expr.SQLArrayExpr;
+import com.alibaba.druid.sql.ast.expr.SQLBinaryExpr;
+import com.alibaba.druid.sql.ast.expr.SQLCharExpr;
+import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.druid.sql.ast.expr.SQLTimestampExpr;
+import com.alibaba.druid.sql.ast.expr.SQLUnaryExpr;
+import com.alibaba.druid.sql.ast.expr.SQLUnaryOperator;
+import com.alibaba.druid.sql.ast.expr.SQLVariantRefExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGBoxExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGCidrExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGCircleExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGDateField;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGExtractExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGInetExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGIntervalExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGLineSegmentsExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGMacAddrExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGPointExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGPolygonExpr;
+import com.alibaba.druid.sql.dialect.postgresql.ast.expr.PGTypeCastExpr;
 import com.alibaba.druid.sql.parser.Lexer;
 import com.alibaba.druid.sql.parser.SQLExprParser;
 import com.alibaba.druid.sql.parser.Token;
@@ -48,36 +65,14 @@ public class PGExprParser extends SQLExprParser {
         }
         return super.parseDataType();
     }
-
-    @Override
-    public PGOrderBy parseOrderBy() {
-        if (lexer.token() == (Token.ORDER)) {
-            PGOrderBy orderBy = new PGOrderBy();
-            lexer.nextToken();
-
-            if (identifierEquals("SIBLINGS")) {
-                lexer.nextToken();
-                orderBy.setSibings(true);
-            }
-
-            accept(Token.BY);
-
-            orderBy.addItem(parseSelectOrderByItem());
-
-            while (lexer.token() == (Token.COMMA)) {
-                lexer.nextToken();
-                orderBy.addItem(parseSelectOrderByItem());
-            }
-
-            return orderBy;
-        }
-
-        return null;
-    }
     
+    public PGSelectParser createSelectParser() {
+        return new PGSelectParser(this);
+    }
+
     public SQLExpr primary() {
         if (lexer.token() == Token.ARRAY) {
-            PGArrayExpr array = new PGArrayExpr();
+            SQLArrayExpr array = new SQLArrayExpr();
             array.setExpr(new SQLIdentifierExpr(lexer.stringVal()));
             lexer.nextToken();
             accept(Token.LBRACKET);
@@ -129,7 +124,7 @@ public class PGExprParser extends SQLExprParser {
         }
         
         if (lexer.token() == Token.LBRACKET) {
-            PGArrayExpr array = new PGArrayExpr();
+            SQLArrayExpr array = new SQLArrayExpr();
             array.setExpr(expr);
             lexer.nextToken();
             this.exprList(array.getValues(), array);
@@ -139,6 +134,10 @@ public class PGExprParser extends SQLExprParser {
         
         if (expr.getClass() == SQLIdentifierExpr.class) {
             String ident = ((SQLIdentifierExpr)expr).getName();
+
+            if (lexer.token() == Token.COMMA) {
+                return super.primaryRest(expr);
+            }
             
             if ("TIMESTAMP".equalsIgnoreCase(ident)) {
                 if (lexer.token() != Token.LITERAL_ALIAS //
@@ -241,5 +240,25 @@ public class PGExprParser extends SQLExprParser {
         }
 
         return super.primaryRest(expr);
+    }
+
+    @Override
+    protected String alias() {
+        String alias = super.alias();
+        if (alias != null) {
+            return alias;
+        }
+        // 某些关键字在alias时,不作为关键字,仍然是作用为别名
+        switch (lexer.token()) {
+        case INTERSECT:
+            // 具体可以参考SQLParser::alias()的方法实现
+            alias = lexer.stringVal();
+            lexer.nextToken();
+            return alias;
+        // TODO other cases
+        default:
+            break;
+        }
+        return alias;
     }
 }

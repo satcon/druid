@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ public class OracleLexer extends Lexer {
         map.put("COMMENT", Token.COMMENT);
         map.put("COMMIT", Token.COMMIT);
         map.put("CONNECT", Token.CONNECT);
+        map.put("CONTINUE", Token.CONTINUE);
 
         map.put("CROSS", Token.CROSS);
         map.put("CURSOR", Token.CURSOR);
@@ -51,6 +52,7 @@ public class OracleLexer extends Lexer {
         map.put("EXTRACT", Token.EXTRACT);
         map.put("GOTO", Token.GOTO);
         map.put("IF", Token.IF);
+        map.put("ELSIF", Token.ELSIF);
 
         map.put("LIMIT", Token.LIMIT);
         map.put("LOOP", Token.LOOP);
@@ -64,6 +66,7 @@ public class OracleLexer extends Lexer {
         map.put("PRIOR", Token.PRIOR);
 
         map.put("REJECT", Token.REJECT);
+        map.put("RETURN", Token.RETURN);
         map.put("RETURNING", Token.RETURNING);
         map.put("SAVEPOINT", Token.SAVEPOINT);
         map.put("SESSION", Token.SESSION);
@@ -94,7 +97,6 @@ public class OracleLexer extends Lexer {
         map.put("PCTINCREASE", Token.PCTINCREASE);
         map.put("FLASH_CACHE", Token.FLASH_CACHE);
         map.put("CELL_FLASH_CACHE", Token.CELL_FLASH_CACHE);
-        map.put("KEEP", Token.KEEP);
         map.put("NONE", Token.NONE);
         map.put("LOB", Token.LOB);
         map.put("STORE", Token.STORE);
@@ -109,6 +111,14 @@ public class OracleLexer extends Lexer {
         map.put("PURGE", Token.PURGE);
         map.put("INITIALLY", Token.INITIALLY);
 
+        map.put("FETCH", Token.FETCH);
+        map.put("TABLESPACE", Token.TABLESPACE);
+        map.put("PARTITION", Token.PARTITION);
+
+        map.put("，", Token.COMMA);
+        map.put("（", Token.LPAREN);
+        map.put("）", Token.RPAREN);
+
         DEFAULT_ORACLE_KEYWORDS = new Keywords(map);
     }
 
@@ -119,6 +129,8 @@ public class OracleLexer extends Lexer {
 
     public OracleLexer(String input){
         super(input);
+        this.skipComment = true;
+        this.keepComments = true;
         super.keywods = DEFAULT_ORACLE_KEYWORDS;
     }
 
@@ -130,7 +142,7 @@ public class OracleLexer extends Lexer {
         }
 
         if (ch != ':' && ch != '#' && ch != '$') {
-            throw new ParserException("illegal variable");
+            throw new ParserException("illegal variable. " + info());
         }
 
         mark = pos;
@@ -162,13 +174,13 @@ public class OracleLexer extends Lexer {
 
         if (quoteFlag) {
             if (ch != '"') {
-                throw new ParserException("syntax error");
+                throw new ParserException("syntax error. " + info());
             }
             ++pos;
             bufPos++;
         } else if (mybatisFlag) {
             if (ch != '}') {
-                throw new ParserException("syntax error");
+                throw new ParserException("syntax error" + info());
             }
             ++pos;
             bufPos++;
@@ -212,7 +224,7 @@ public class OracleLexer extends Lexer {
                 bufPos++;
             }
 
-            for (;;) {
+            for (;!isEOF();) {
                 if (ch == '*' && charAt(pos + 1) == '/') {
                     bufPos += 2;
                     scanChar();
@@ -230,7 +242,10 @@ public class OracleLexer extends Lexer {
             } else {
                 stringVal = subString(mark, bufPos);
                 token = Token.MULTI_LINE_COMMENT;
-                hasComment = true;
+                commentCount++;
+                if (keepComments) {
+                    addComment(stringVal);
+                }
             }
 
             if (token != Token.HINT && !isAllowComment()) {
@@ -271,9 +286,12 @@ public class OracleLexer extends Lexer {
                 bufPos++;
             }
 
-            stringVal = subString(mark + 1, bufPos);
+            stringVal = subString(mark, ch != EOI ? bufPos : bufPos + 1);
             token = Token.LINE_COMMENT;
-            hasComment = true;
+            commentCount++;
+            if (keepComments) {
+                addComment(stringVal);
+            }
             endOfComment = isEOF();
             return;
         }

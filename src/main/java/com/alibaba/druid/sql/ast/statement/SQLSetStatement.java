@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,11 @@ import java.util.List;
 
 import com.alibaba.druid.sql.ast.SQLCommentHint;
 import com.alibaba.druid.sql.ast.SQLExpr;
+import com.alibaba.druid.sql.ast.SQLName;
 import com.alibaba.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.druid.sql.ast.expr.SQLBinaryOpExpr;
+import com.alibaba.druid.sql.ast.expr.SQLBinaryOperator;
+import com.alibaba.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLSetStatement extends SQLStatementImpl {
@@ -43,6 +47,11 @@ public class SQLSetStatement extends SQLStatementImpl {
     public SQLSetStatement(SQLExpr target, SQLExpr value, String dbType){
         super (dbType);
         this.items.add(new SQLAssignItem(target, value));
+    }
+
+    public static SQLSetStatement plus(SQLName target) {
+        SQLExpr value = new SQLBinaryOpExpr(target.clone(), SQLBinaryOperator.Add, new SQLIntegerExpr(1));
+        return new SQLSetStatement(target, value);
     }
 
     public List<SQLAssignItem> getItems() {
@@ -81,5 +90,22 @@ public class SQLSetStatement extends SQLStatementImpl {
             SQLAssignItem item = items.get(i);
             item.output(buf);
         }
+    }
+
+    public SQLSetStatement clone() {
+        SQLSetStatement x = new SQLSetStatement();
+        for (SQLAssignItem item : items) {
+            SQLAssignItem item2 = item.clone();
+            item2.setParent(x);
+            x.items.add(item2);
+        }
+        if (hints != null) {
+            for (SQLCommentHint hint : hints) {
+                SQLCommentHint h2 = hint.clone();
+                h2.setParent(x);
+                x.hints.add(h2);
+            }
+        }
+        return x;
     }
 }

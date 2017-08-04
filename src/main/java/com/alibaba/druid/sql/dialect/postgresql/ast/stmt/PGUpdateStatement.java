@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,20 +32,8 @@ public class PGUpdateStatement extends SQLUpdateStatement implements PGSQLStatem
 
     private PGWithClause   with;
 
-    private List<SQLExpr>  returning = new ArrayList<SQLExpr>(2);
-
-    private SQLTableSource from;
-    
     public PGUpdateStatement(){
         super (JdbcConstants.POSTGRESQL);
-    }
-
-    public SQLTableSource getFrom() {
-        return from;
-    }
-
-    public void setFrom(SQLTableSource from) {
-        this.from = from;
     }
 
     public boolean isOnly() {
@@ -54,14 +42,6 @@ public class PGUpdateStatement extends SQLUpdateStatement implements PGSQLStatem
 
     public void setOnly(boolean only) {
         this.only = only;
-    }
-
-    public List<SQLExpr> getReturning() {
-        return returning;
-    }
-
-    public void setReturning(List<SQLExpr> returning) {
-        this.returning = returning;
     }
 
     public PGWithClause getWith() {

@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +19,10 @@ import com.alibaba.druid.sql.ast.SQLExpr;
 import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.dialect.sqlserver.ast.SQLServerObjectImpl;
 import com.alibaba.druid.sql.dialect.sqlserver.ast.SQLServerStatement;
+import com.alibaba.druid.sql.dialect.sqlserver.ast.SQLServerStatementImpl;
 import com.alibaba.druid.sql.dialect.sqlserver.visitor.SQLServerASTVisitor;
 
-public class SQLServerWaitForStatement extends SQLServerObjectImpl implements SQLServerStatement {
+public class SQLServerWaitForStatement extends SQLServerStatementImpl implements SQLServerStatement {
 
     private SQLExpr      delay;
 
@@ -30,7 +31,7 @@ public class SQLServerWaitForStatement extends SQLServerObjectImpl implements SQ
     private SQLStatement statement;
 
     private SQLExpr      timeout;
-
+    
     @Override
     public void accept0(SQLServerASTVisitor visitor) {
         if (visitor.visit(this)) {
@@ -73,5 +74,4 @@ public class SQLServerWaitForStatement extends SQLServerObjectImpl implements SQ
     public void setTimeout(SQLExpr timeout) {
         this.timeout = timeout;
     }
-
 }

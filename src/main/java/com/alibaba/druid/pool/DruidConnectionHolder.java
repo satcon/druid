@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,37 +15,48 @@
  */
 package com.alibaba.druid.pool;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.locks.ReentrantLock;
+
+import javax.sql.ConnectionEventListener;
+import javax.sql.StatementEventListener;
+
+import com.alibaba.druid.pool.DruidAbstractDataSource.PhysicalConnectionInfo;
+import com.alibaba.druid.proxy.jdbc.WrapperProxy;
 import com.alibaba.druid.support.logging.Log;
 import com.alibaba.druid.support.logging.LogFactory;
 import com.alibaba.druid.util.JdbcConstants;
 import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.druid.util.Utils;
 
-import javax.sql.ConnectionEventListener;
-import javax.sql.StatementEventListener;
-
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-
 /**
- * @author wenshao<szujobs@hotmail.com>
+ * @author wenshao [szujobs@hotmail.com]
  */
 public final class DruidConnectionHolder {
 
     private final static Log                    LOG                      = LogFactory.getLog(DruidConnectionHolder.class);
 
-    private final DruidAbstractDataSource       dataSource;
+    protected final DruidAbstractDataSource       dataSource;
+    private final long                          connectionId;
     private final Connection                    conn;
     private final List<ConnectionEventListener> connectionEventListeners = new CopyOnWriteArrayList<ConnectionEventListener>();
     private final List<StatementEventListener>  statementEventListeners  = new CopyOnWriteArrayList<StatementEventListener>();
-    private final long                          connectTimeMillis;
-    private transient long                      lastActiveTimeMillis;
+    protected final long                        connectTimeMillis;
+    protected transient long                    lastActiveTimeMillis;
     private long                                useCount                 = 0;
+    private long                                keepAliveCheckCount      = 0;
+
+    private long                                lastNotEmptyWaitNanos;
+
+    private final long                          createNanoSpan;
 
     private PreparedStatementPool               statementPool;
 
@@ -62,22 +73,51 @@ public final class DruidConnectionHolder {
     private int                                 underlyingTransactionIsolation;
     private boolean                             underlyingAutoCommit;
     private boolean                             discard                  = false;
-    
+
+    protected final Map<String, Object>         variables;
+    protected final Map<String, Object>         globleVariables;
+
     public static boolean                       holdabilityUnsupported   = false;
 
-    public DruidConnectionHolder(DruidAbstractDataSource dataSource, Connection conn) throws SQLException{
+    public DruidConnectionHolder(DruidAbstractDataSource dataSource, PhysicalConnectionInfo pyConnectInfo)
+                                                                                                          throws SQLException{
+        this(dataSource,
+            pyConnectInfo.getPhysicalConnection(),
+            pyConnectInfo.getConnectNanoSpan(),
+            pyConnectInfo.getVairiables(),
+            pyConnectInfo.getGlobalVairiables());
+    }
 
+    public DruidConnectionHolder(DruidAbstractDataSource dataSource, Connection conn, long connectNanoSpan)
+                                                                                                           throws SQLException{
+        this(dataSource, conn, connectNanoSpan, null, null);
+    }
+
+    public DruidConnectionHolder(DruidAbstractDataSource dataSource, Connection conn, long connectNanoSpan,
+                                 Map<String, Object> variables, Map<String, Object> globleVariables)
+                                                                                                    throws SQLException{
         this.dataSource = dataSource;
         this.conn = conn;
+        this.createNanoSpan = connectNanoSpan;
+        this.variables = variables;
+        this.globleVariables = globleVariables;
+
         this.connectTimeMillis = System.currentTimeMillis();
         this.lastActiveTimeMillis = connectTimeMillis;
 
         this.underlyingAutoCommit = conn.getAutoCommit();
 
+        if (conn instanceof WrapperProxy) {
+            this.connectionId = ((WrapperProxy) conn).getId();
+        } else {
+            this.connectionId = dataSource.createConnectionId();
+        }
+
         {
             boolean initUnderlyHoldability = !holdabilityUnsupported;
-            if (JdbcConstants.SYBASE.equals(dataSource.getDbType()) //
-                || JdbcConstants.DB2.equals(dataSource.getDbType()) //
+            if (JdbcConstants.SYBASE.equals(dataSource.dbType) //
+                || JdbcConstants.DB2.equals(dataSource.dbType) //
+                || JdbcConstants.HIVE.equals(dataSource.dbType) //
             ) {
                 initUnderlyHoldability = false;
             }
@@ -87,7 +127,14 @@ public final class DruidConnectionHolder {
                 } catch (UnsupportedOperationException e) {
                     holdabilityUnsupported = true;
                     LOG.warn("getHoldability unsupported", e);
+                } catch (SQLFeatureNotSupportedException e) {
+                    holdabilityUnsupported = true;
+                    LOG.warn("getHoldability unsupported", e);
                 } catch (SQLException e) {
+                    // bug fixed for hive jdbc-driver
+                    if ("Method not supported".equals(e.getMessage())) {
+                        holdabilityUnsupported = true;
+                    }
                     LOG.warn("getHoldability error", e);
                 }
             }
@@ -98,7 +145,10 @@ public final class DruidConnectionHolder {
             this.underlyingTransactionIsolation = conn.getTransactionIsolation();
         } catch (SQLException e) {
             // compartible for alibaba corba
-            if (!"com.mysql.jdbc.exceptions.jdbc4.MySQLSyntaxErrorException".equals(e.getClass().getName())) { 
+            if ("HY000".equals(e.getSQLState())
+                    || "com.mysql.jdbc.exceptions.jdbc4.MySQLSyntaxErrorException".equals(e.getClass().getName())) {
+                // skip
+            } else {
                 throw e;
             }
         }
@@ -203,8 +253,20 @@ public final class DruidConnectionHolder {
         return useCount;
     }
 
+    public long getConnectionId() {
+        return connectionId;
+    }
+
     public void incrementUseCount() {
         useCount++;
+    }
+
+    public long getKeepAliveCheckCount() {
+        return keepAliveCheckCount;
+    }
+
+    public void incrementKeepAliveCheckCount() {
+        keepAliveCheckCount++;
     }
 
     public void reset() throws SQLException {
@@ -247,6 +309,18 @@ public final class DruidConnectionHolder {
 
     public void setDiscard(boolean discard) {
         this.discard = discard;
+    }
+
+    public long getCreateNanoSpan() {
+        return createNanoSpan;
+    }
+
+    public long getLastNotEmptyWaitNanos() {
+        return lastNotEmptyWaitNanos;
+    }
+
+    protected void setLastNotEmptyWaitNanos(long lastNotEmptyWaitNanos) {
+        this.lastNotEmptyWaitNanos = lastNotEmptyWaitNanos;
     }
 
     public String toString() {

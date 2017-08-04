@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import com.alibaba.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.druid.sql.ast.statement.SQLSelect;
 import com.alibaba.druid.sql.ast.statement.SQLSelectQuery;
 import com.alibaba.druid.sql.ast.statement.SQLTableSource;
-import com.alibaba.druid.sql.dialect.sqlserver.ast.SQLServerSelect;
 import com.alibaba.druid.sql.dialect.sqlserver.ast.SQLServerSelectQueryBlock;
 import com.alibaba.druid.sql.dialect.sqlserver.ast.SQLServerTop;
 import com.alibaba.druid.sql.parser.ParserException;
@@ -41,7 +40,7 @@ public class SQLServerSelectParser extends SQLSelectParser {
     }
 
     public SQLSelect select() {
-        SQLServerSelect select = new SQLServerSelect();
+        SQLSelect select = new SQLSelect();
 
         withSubquery(select);
 
@@ -76,6 +75,9 @@ public class SQLServerSelectParser extends SQLSelectParser {
                         } else {
                             select.getForXmlOptions().add("ELEMENTS");
                         }
+                    } else if (identifierEquals("PATH")) {
+                        SQLExpr xmlPath = this.exprParser.expr();
+                        select.setXmlPath(xmlPath);
                     } else {
                         break;
                     }
@@ -88,7 +90,7 @@ public class SQLServerSelectParser extends SQLSelectParser {
                     }
                 }
             } else {
-                throw new ParserException("syntax error, not support option : " + lexer.token());
+                throw new ParserException("syntax error, not support option : " + lexer.token() + ", " + lexer.info());
             }
         }
         
@@ -99,7 +101,7 @@ public class SQLServerSelectParser extends SQLSelectParser {
             acceptIdentifier("ROWS");
             select.setOffset(offset);
             
-            if (identifierEquals("FETCH")) {
+            if (lexer.token() == Token.FETCH) {
                 lexer.nextToken();
                 acceptIdentifier("NEXT");
                 
@@ -160,6 +162,10 @@ public class SQLServerSelectParser extends SQLSelectParser {
         parseWhere(queryBlock);
 
         parseGroupBy(queryBlock);
+
+        queryBlock.setOrderBy(this.exprParser.parseOrderBy());
+
+        parseFetchClause(queryBlock);
 
         return queryRest(queryBlock);
     }

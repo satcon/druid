@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,19 +15,36 @@
  */
 package com.alibaba.druid.sql.ast.statement;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import com.alibaba.druid.sql.SQLUtils;
 import com.alibaba.druid.sql.ast.SQLExpr;
+import com.alibaba.druid.sql.ast.SQLName;
+import com.alibaba.druid.sql.ast.SQLStatement;
+import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.druid.sql.ast.expr.SQLIntegerExpr;
+import com.alibaba.druid.sql.ast.expr.SQLPropertyExpr;
+import com.alibaba.druid.sql.repository.SchemaObject;
 import com.alibaba.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLExprTableSource extends SQLTableSourceImpl {
 
-    protected SQLExpr expr;
+    protected SQLExpr     expr;
+    private List<SQLName> partitions;
+    private SchemaObject  schemaObject;
 
     public SQLExprTableSource(){
 
     }
 
     public SQLExprTableSource(SQLExpr expr){
+        this(expr, null);
+    }
+
+    public SQLExprTableSource(SQLExpr expr, String alias){
         this.setExpr(expr);
+        this.setAlias(alias);
     }
 
     public SQLExpr getExpr() {
@@ -39,6 +56,69 @@ public class SQLExprTableSource extends SQLTableSourceImpl {
             expr.setParent(this);
         }
         this.expr = expr;
+    }
+
+    public SQLName getName() {
+        if (expr instanceof SQLName) {
+            return (SQLName) expr;
+        }
+        return null;
+    }
+
+    public String getSchema() {
+        if (expr == null) {
+            return null;
+        }
+
+        if (expr instanceof SQLPropertyExpr) {
+            return ((SQLPropertyExpr) expr).getOwnernName();
+        }
+
+        return null;
+    }
+
+    public void setSchema(String schema) {
+        if (expr instanceof SQLIdentifierExpr) {
+            if (schema == null) {
+                return;
+            }
+
+            String ident = ((SQLIdentifierExpr) expr).getName();
+            this.setExpr(new SQLPropertyExpr(schema, ident));
+        } else if (expr instanceof SQLPropertyExpr) {
+            SQLPropertyExpr propertyExpr = (SQLPropertyExpr) expr;
+            if (schema == null) {
+                setExpr(new SQLIdentifierExpr(propertyExpr.getName()));
+            } else {
+                propertyExpr.setOwner(schema);
+            }
+        }
+    }
+
+    public List<SQLName> getPartitions() {
+        if (this.partitions == null) {
+            this.partitions = new ArrayList<SQLName>(2);
+        }
+        
+        return partitions;
+    }
+    
+    public int getPartitionSize() {
+        if (this.partitions == null) {
+            return 0;
+        }
+        return this.partitions.size();
+    }
+
+    public void addPartition(SQLName partition) {
+        if (partition != null) {
+            partition.setParent(this);
+        }
+        
+        if (this.partitions == null) {
+            this.partitions = new ArrayList<SQLName>(2);
+        }
+        this.partitions.add(partition);
     }
 
     @Override
@@ -54,23 +134,109 @@ public class SQLExprTableSource extends SQLTableSourceImpl {
     }
 
     @Override
-    public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ((expr == null) ? 0 : expr.hashCode());
-        return result;
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        SQLExprTableSource that = (SQLExprTableSource) o;
+
+        if (expr != null ? !expr.equals(that.expr) : that.expr != null) return false;
+        return partitions != null ? partitions.equals(that.partitions) : that.partitions == null;
     }
 
     @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-        if (obj == null) return false;
-        if (getClass() != obj.getClass()) return false;
-        SQLExprTableSource other = (SQLExprTableSource) obj;
-        if (expr == null) {
-            if (other.expr != null) return false;
-        } else if (!expr.equals(other.expr)) return false;
-        return true;
+    public int hashCode() {
+        int result = expr != null ? expr.hashCode() : 0;
+        result = 31 * result + (partitions != null ? partitions.hashCode() : 0);
+        return result;
     }
 
+    public String computeAlias() {
+        String alias = this.getAlias();
+
+        if (alias == null) {
+            if (expr instanceof SQLName) {
+                alias =((SQLName) expr).getSimpleName();
+            }
+        }
+
+        return SQLUtils.normalize(alias);
+    }
+
+    public SQLExprTableSource clone() {
+        SQLExprTableSource x = new SQLExprTableSource();
+        cloneTo(x);
+        return x;
+    }
+
+    public void cloneTo(SQLExprTableSource x) {
+        x.alias = alias;
+
+        if (expr != null) {
+            x.expr = expr.clone();
+        }
+
+        if (partitions != null) {
+            for (SQLName p : partitions) {
+                SQLName p1 = p.clone();
+                x.addPartition(p1);
+            }
+        }
+    }
+
+    public SchemaObject getSchemaObject() {
+        return schemaObject;
+    }
+
+    public void setSchemaObject(SchemaObject schemaObject) {
+        this.schemaObject = schemaObject;
+    }
+
+    public boolean containsAlias(String alias) {
+        if (SQLUtils.nameEquals(this.alias, alias)) {
+            return true;
+        }
+
+        String name = null;
+        if (expr instanceof SQLIdentifierExpr) {
+            name = ((SQLIdentifierExpr) expr).getName();
+        } else if (expr instanceof SQLPropertyExpr) {
+            name = ((SQLPropertyExpr) expr).getName();
+        }
+
+        if (name != null && SQLUtils.nameEquals(name, alias)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public SQLColumnDefinition findColumn(String columnName) {
+        if (schemaObject == null) {
+            return null;
+        }
+
+        SQLStatement stmt = schemaObject.getStatement();
+        if (stmt instanceof SQLCreateTableStatement) {
+            SQLCreateTableStatement createTableStmt = (SQLCreateTableStatement) stmt;
+            return createTableStmt.findColumn(columnName);
+        }
+        return null;
+    }
+
+    public SQLTableSource findTableSourceWithColumn(String columnName) {
+        if (schemaObject == null) {
+            return null;
+        }
+
+        SQLStatement stmt = schemaObject.getStatement();
+        if (stmt instanceof SQLCreateTableStatement) {
+            SQLCreateTableStatement createTableStmt = (SQLCreateTableStatement) stmt;
+            if (createTableStmt.findColumn(columnName) != null) {
+                return this;
+            }
+        }
+
+        return null;
+    }
 }

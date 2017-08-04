@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.alibaba.druid.wall.spi;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.alibaba.druid.sql.PagerUtils;
 import com.alibaba.druid.sql.SQLUtils;
 import com.alibaba.druid.sql.ast.SQLCommentHint;
 import com.alibaba.druid.sql.ast.SQLName;
@@ -28,33 +29,15 @@ import com.alibaba.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.druid.sql.ast.expr.SQLNumericLiteralExpr;
 import com.alibaba.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.druid.sql.ast.expr.SQLVariantRefExpr;
-import com.alibaba.druid.sql.ast.statement.SQLAlterTableStatement;
-import com.alibaba.druid.sql.ast.statement.SQLAssignItem;
-import com.alibaba.druid.sql.ast.statement.SQLCallStatement;
-import com.alibaba.druid.sql.ast.statement.SQLCreateTableStatement;
-import com.alibaba.druid.sql.ast.statement.SQLCreateTriggerStatement;
-import com.alibaba.druid.sql.ast.statement.SQLDeleteStatement;
-import com.alibaba.druid.sql.ast.statement.SQLDropTableStatement;
-import com.alibaba.druid.sql.ast.statement.SQLExprTableSource;
-import com.alibaba.druid.sql.ast.statement.SQLInsertStatement;
-import com.alibaba.druid.sql.ast.statement.SQLSelectGroupByClause;
-import com.alibaba.druid.sql.ast.statement.SQLSelectItem;
-import com.alibaba.druid.sql.ast.statement.SQLSelectQueryBlock;
-import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
-import com.alibaba.druid.sql.ast.statement.SQLSetStatement;
-import com.alibaba.druid.sql.ast.statement.SQLUnionQuery;
-import com.alibaba.druid.sql.ast.statement.SQLUpdateStatement;
+import com.alibaba.druid.sql.ast.statement.*;
 import com.alibaba.druid.sql.dialect.mysql.ast.expr.MySqlOutFileExpr;
-import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlDeleteStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlInsertStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlReplaceStatement;
-import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlSelectGroupBy;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
-import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock.Limit;
+import com.alibaba.druid.sql.ast.SQLLimit;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlShowCreateTableStatement;
-import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlUnionQuery;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlUpdateStatement;
 import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlASTVisitorAdapter;
@@ -144,11 +127,6 @@ public class MySqlWallVisitor extends MySqlASTVisitorAdapter implements WallVisi
         return true;
     }
 
-    public boolean visit(MySqlSelectGroupBy x) {
-        WallVisitorUtils.checkHaving(this, x.getHaving());
-        return true;
-    }
-
     @Override
     public boolean visit(MySqlDeleteStatement x) {
         WallVisitorUtils.checkReadOnly(this, x.getFrom());
@@ -205,6 +183,13 @@ public class MySqlWallVisitor extends MySqlASTVisitorAdapter implements WallVisi
         }
 
         WallVisitorUtils.initWallTopStatementContext();
+
+        int selectLimit = config.getSelectLimit();
+        if (selectLimit >= 0) {
+            SQLSelect select = x.getSelect();
+            PagerUtils.limit(select, getDbType(), 0, selectLimit, true);
+            this.sqlModified = true;
+        }
         return true;
     }
 
@@ -214,7 +199,7 @@ public class MySqlWallVisitor extends MySqlASTVisitorAdapter implements WallVisi
     }
 
     @Override
-    public boolean visit(Limit x) {
+    public boolean visit(SQLLimit x) {
         if (x.getRowCount() instanceof SQLNumericLiteralExpr) {
             WallContext context = WallContext.current();
 
@@ -371,13 +356,6 @@ public class MySqlWallVisitor extends MySqlASTVisitorAdapter implements WallVisi
     }
 
     @Override
-    public boolean visit(MySqlUnionQuery x) {
-        WallVisitorUtils.checkUnion(this, x);
-
-        return true;
-    }
-
-    @Override
     public String toSQL(SQLObject obj) {
         return SQLUtils.toMySqlString(obj);
     }
@@ -414,12 +392,6 @@ public class MySqlWallVisitor extends MySqlASTVisitorAdapter implements WallVisi
     }
 
     public boolean visit(SQLAlterTableStatement x) {
-        WallVisitorUtils.check(this, x);
-        return true;
-    }
-
-    @Override
-    public boolean visit(MySqlAlterTableStatement x) {
         WallVisitorUtils.check(this, x);
         return true;
     }

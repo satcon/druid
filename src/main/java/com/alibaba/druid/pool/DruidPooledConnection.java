@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2011 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import javax.sql.ConnectionEvent;
 import javax.sql.ConnectionEventListener;
@@ -49,7 +51,7 @@ import com.alibaba.druid.support.logging.Log;
 import com.alibaba.druid.support.logging.LogFactory;
 
 /**
- * @author wenshao<szujobs@hotmail.com>
+ * @author wenshao [szujobs@hotmail.com]
  */
 public class DruidPooledConnection extends PoolableWrapper implements javax.sql.PooledConnection, Connection {
 
@@ -65,7 +67,7 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
     private boolean                          disable              = false;
     private boolean                          closed               = false;
     private final Thread                     ownerThread;
-
+    private long                             connectedTimeMillis;
     private long                             connectedTimeNano;
     private volatile boolean                 running              = false;
 
@@ -75,6 +77,8 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
 
     private Throwable                        disableError         = null;
 
+    public  ReentrantLock                    lock                 = new ReentrantLock();
+
     public DruidPooledConnection(DruidConnectionHolder holder){
         super(holder.getConnection());
 
@@ -82,6 +86,11 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
         this.holder = holder;
         dupCloseLogEnable = holder.getDataSource().isDupCloseLogEnable();
         ownerThread = Thread.currentThread();
+        connectedTimeMillis = System.currentTimeMillis();
+    }
+
+    public long getConnectedTimeMillis() {
+        return connectedTimeMillis;
     }
 
     public Thread getOwnerThread() {
@@ -159,7 +168,7 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
         }
 
         stmt.getPreparedStatementHolder().decrementInUseCount();
-        if (stmt.isPooled() && holder.isPoolPreparedStatements()) {
+        if (stmt.isPooled() && holder.isPoolPreparedStatements() && stmt.exceptionCount == 0) {
             holder.getStatementPool().put(stmt.getPreparedStatementHolder());
 
             stmt.clearResultSet();
@@ -168,9 +177,23 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
             stmt.getPreparedStatementHolder().setFetchRowPeak(stmt.getFetchRowPeak());
 
             stmt.setClosed(true); // soft set close
+        } else if (stmt.isPooled() && holder.isPoolPreparedStatements()) {
+            // the PreparedStatement threw an exception
+            stmt.clearResultSet();
+            holder.removeTrace(stmt);
+
+            holder.getStatementPool().remove(stmt.getPreparedStatementHolder());
         } else {
-            stmt.closeInternal();
-            holder.getDataSource().incrementClosedPreparedStatementCount();
+            try {
+                //Connection behind the statement may be in invalid state, which will throw a SQLException.
+                //In this case, the exception is desired to be properly handled to remove the unusable connection from the pool.
+                stmt.closeInternal();
+            } catch (SQLException ex) {
+                this.handleException(ex);
+                throw ex;
+            } finally {
+                holder.getDataSource().incrementClosedPreparedStatementCount();
+            }
         }
     }
 
@@ -180,6 +203,10 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
 
     @Override
     public Connection getConnection() {
+        if (!holder.isUnderlyingAutoCommit()) {
+            createTransactionInfo();
+        }
+
         return conn;
     }
 
@@ -245,33 +272,38 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
         this.disable = true;
     }
 
-    public synchronized void syncClose() throws SQLException {
-        if (this.disable) {
-            return;
-        }
-
-        DruidConnectionHolder holder = this.holder;
-        if (holder == null) {
-            if (dupCloseLogEnable) {
-                LOG.error("dup close");
+    public void syncClose() throws SQLException {
+        lock.lock();
+        try {
+            if (this.disable) {
+                return;
             }
-            return;
-        }
 
-        for (ConnectionEventListener listener : holder.getConnectionEventListeners()) {
-            listener.connectionClosed(new ConnectionEvent(this));
-        }
+            DruidConnectionHolder holder = this.holder;
+            if (holder == null) {
+                if (dupCloseLogEnable) {
+                    LOG.error("dup close");
+                }
+                return;
+            }
 
-        DruidAbstractDataSource dataSource = holder.getDataSource();
-        List<Filter> filters = dataSource.getProxyFilters();
-        if (filters.size() > 0) {
-            FilterChainImpl filterChain = new FilterChainImpl(dataSource);
-            filterChain.dataSource_recycle(this);
-        } else {
-            recycle();
-        }
+            for (ConnectionEventListener listener : holder.getConnectionEventListeners()) {
+                listener.connectionClosed(new ConnectionEvent(this));
+            }
 
-        this.disable = true;
+            DruidAbstractDataSource dataSource = holder.getDataSource();
+            List<Filter> filters = dataSource.getProxyFilters();
+            if (filters.size() > 0) {
+                FilterChainImpl filterChain = new FilterChainImpl(dataSource);
+                filterChain.dataSource_recycle(this);
+            } else {
+                recycle();
+            }
+
+            this.disable = true;
+        } finally {
+            lock.unlock();
+        }
     }
 
     public void recycle() throws SQLException {
@@ -333,7 +365,7 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
 
     private void initStatement(PreparedStatementHolder stmtHolder) throws SQLException {
         stmtHolder.incrementInUseCount();
-        holder.getDataSource().initStatement(this, stmtHolder.getStatement());
+        holder.getDataSource().initStatement(this, stmtHolder.statement);
     }
 
     @Override
@@ -727,6 +759,12 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
         return transactionInfo;
     }
 
+    protected void createTransactionInfo() {
+        DruidAbstractDataSource dataSource = holder.getDataSource();
+        dataSource.incrementStartTransactionCount();
+        transactionInfo = new TransactionInfo(dataSource.createTransactionId());
+    }
+
     @Override
     public void rollback() throws SQLException {
         if (transactionInfo == null) {
@@ -830,6 +868,10 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
     @Override
     public DatabaseMetaData getMetaData() throws SQLException {
         checkState();
+
+        if (!holder.isUnderlyingAutoCommit()) {
+            createTransactionInfo();
+        }
 
         return conn.getMetaData();
     }
@@ -954,6 +996,10 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
     @Override
     public int getHoldability() throws SQLException {
         checkState();
+
+        if (!holder.isUnderlyingAutoCommit()) {
+            createTransactionInfo();
+        }
 
         return conn.getHoldability();
     }
@@ -1093,8 +1139,11 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
         }
         
         if (asyncCloseEnabled) {
-            synchronized (this) {
+            lock.lock();
+            try {
                 checkStateInternal();
+            } finally {
+                lock.unlock();
             }
         } else {
             checkStateInternal();
@@ -1176,5 +1225,40 @@ public class DruidPooledConnection extends PoolableWrapper implements javax.sql.
 
     public void abandond() {
         this.abandoned = true;
+    }
+    
+    /**
+     * @since 1.0.17
+     */
+    public long getPhysicalConnectNanoSpan() {
+        return this.holder.getCreateNanoSpan();
+    }
+    
+    /**
+     * @since 1.0.17
+     */
+    public long getPhysicalConnectionUsedCount() {
+        return this.holder.getUseCount();
+    }
+    
+    /**
+     * @since 1.0.17
+     */
+    public long getConnectNotEmptyWaitNanos() {
+        return this.holder.getLastNotEmptyWaitNanos();
+    }
+
+    /**
+     * @since  1.0.28
+     */
+    public Map<String, Object> getVariables() {
+        return this.holder.variables;
+    }
+
+    /**
+     * @since  1.0.28
+     */
+    public Map<String, Object> getGloablVariables() {
+        return this.holder.globleVariables;
     }
 }
