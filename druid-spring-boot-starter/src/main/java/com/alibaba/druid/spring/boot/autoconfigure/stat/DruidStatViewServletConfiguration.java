@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2017 Alibaba Group Holding Ltd.
+ * Copyright 1999-2018 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,16 +26,20 @@ import org.springframework.context.annotation.Bean;
  * @author lihengming [89921218@qq.com]
  */
 @ConditionalOnWebApplication
-@ConditionalOnProperty(name = "spring.datasource.druid.stat-view-servlet.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "spring.datasource.druid.stat-view-servlet.enabled", havingValue = "true")
 public class DruidStatViewServletConfiguration {
+    private static final String DEFAULT_ALLOW_IP = "127.0.0.1";
+
     @Bean
-    public ServletRegistrationBean servletRegistrationBean(DruidStatProperties properties) {
+    public ServletRegistrationBean statViewServletRegistrationBean(DruidStatProperties properties) {
         DruidStatProperties.StatViewServlet config = properties.getStatViewServlet();
         ServletRegistrationBean registrationBean = new ServletRegistrationBean();
         registrationBean.setServlet(new StatViewServlet());
         registrationBean.addUrlMappings(config.getUrlPattern() != null ? config.getUrlPattern() : "/druid/*");
         if (config.getAllow() != null) {
             registrationBean.addInitParameter("allow", config.getAllow());
+        } else {
+            registrationBean.addInitParameter("allow", DEFAULT_ALLOW_IP);
         }
         if (config.getDeny() != null) {
             registrationBean.addInitParameter("deny", config.getDeny());

@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2017 Alibaba Group Holding Ltd.
+ * Copyright 1999-2018 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,10 @@ package com.alibaba.druid.spring.boot.autoconfigure.stat;
 
 import com.alibaba.druid.filter.config.ConfigFilter;
 import com.alibaba.druid.filter.encoding.EncodingConvertFilter;
-import com.alibaba.druid.filter.logging.*;
+import com.alibaba.druid.filter.logging.CommonsLogFilter;
+import com.alibaba.druid.filter.logging.Log4j2Filter;
+import com.alibaba.druid.filter.logging.Log4jFilter;
+import com.alibaba.druid.filter.logging.Slf4jLogFilter;
 import com.alibaba.druid.filter.stat.StatFilter;
 import com.alibaba.druid.wall.WallConfig;
 import com.alibaba.druid.wall.WallFilter;
@@ -30,10 +33,9 @@ import org.springframework.context.annotation.Bean;
  * @author lihengming [89921218@qq.com]
  */
 public class DruidFilterConfiguration {
-
     @Bean
     @ConfigurationProperties(FILTER_STAT_PREFIX)
-    @ConditionalOnProperty(prefix = FILTER_STAT_PREFIX, name = "enabled", matchIfMissing = true)
+    @ConditionalOnProperty(prefix = FILTER_STAT_PREFIX, name = "enabled")
     @ConditionalOnMissingBean
     public StatFilter statFilter() {
         return new StatFilter();
@@ -105,7 +107,6 @@ public class DruidFilterConfiguration {
         return filter;
     }
 
-
     private static final String FILTER_STAT_PREFIX = "spring.datasource.druid.filter.stat";
     private static final String FILTER_CONFIG_PREFIX = "spring.datasource.druid.filter.config";
     private static final String FILTER_ENCODING_PREFIX = "spring.datasource.druid.filter.encoding";
@@ -115,6 +116,4 @@ public class DruidFilterConfiguration {
     private static final String FILTER_COMMONS_LOG_PREFIX = "spring.datasource.druid.filter.commons-log";
     private static final String FILTER_WALL_PREFIX = "spring.datasource.druid.filter.wall";
     private static final String FILTER_WALL_CONFIG_PREFIX = FILTER_WALL_PREFIX + ".config";
-
-
 }

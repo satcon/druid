@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2017 Alibaba Group Holding Ltd.
+ * Copyright 1999-2018 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit4.SpringRunner;
 
 import javax.annotation.Resource;
+import java.sql.SQLException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,14 +35,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(classes = DemoApplication.class)
 @ActiveProfiles("multi-datasource")
 public class DruidMultiDataSourceTestCase {
-
     @Resource
     private DruidDataSource dataSourceOne;
     @Resource
     private DruidDataSource dataSourceTwo;
 
     @Test
-    public void testDataSourceOne() {
+    public void testDataSourceOne() throws SQLException {
         assertThat(dataSourceOne.getUrl()).isEqualTo("jdbc:h2:file:./demo-db");
         assertThat(dataSourceOne.getUsername()).isEqualTo("sa");
         assertThat(dataSourceOne.getPassword()).isEqualTo("sa");
@@ -53,7 +53,7 @@ public class DruidMultiDataSourceTestCase {
         assertThat(dataSourceOne.getMaxWait()).isEqualTo(10000);
     }
     @Test
-    public void testDataSourceTwo() {
+    public void testDataSourceTwo() throws SQLException {
         assertThat(dataSourceTwo.getUrl()).isEqualTo("jdbc:h2:file:./demo-db");
         assertThat(dataSourceTwo.getUsername()).isEqualTo("sa");
         assertThat(dataSourceTwo.getPassword()).isEqualTo("sa");

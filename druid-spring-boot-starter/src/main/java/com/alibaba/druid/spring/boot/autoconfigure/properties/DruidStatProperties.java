@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2017 Alibaba Group Holding Ltd.
+ * Copyright 1999-2018 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ public class DruidStatProperties {
     private String[] aopPatterns;
     private StatViewServlet statViewServlet = new StatViewServlet();
     private WebStatFilter webStatFilter = new WebStatFilter();
-
 
     public String[] getAopPatterns() {
         return aopPatterns;
@@ -53,9 +52,9 @@ public class DruidStatProperties {
 
     public static class StatViewServlet {
         /**
-         * Enable StatViewServlet.
+         * Enable StatViewServlet, default false.
          */
-        private boolean enabled = true;
+        private boolean enabled;
         private String urlPattern;
         private String allow;
         private String deny;
@@ -122,9 +121,9 @@ public class DruidStatProperties {
 
     public static class WebStatFilter {
         /**
-         * Enable WebStatFilter.
+         * Enable WebStatFilter, default false.
          */
-        private boolean enabled = true;
+        private boolean enabled;
         private String urlPattern;
         private String exclusions;
         private String sessionStatMaxCount;
