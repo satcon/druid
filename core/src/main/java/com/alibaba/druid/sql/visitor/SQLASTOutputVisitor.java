@@ -36,7 +36,6 @@ import com.alibaba.druid.sql.dialect.oracle.ast.expr.OracleCursorExpr;
 import com.alibaba.druid.sql.dialect.oracle.ast.expr.OracleDatetimeExpr;
 import com.alibaba.druid.sql.dialect.oracle.ast.stmt.OracleCreatePackageStatement;
 import com.alibaba.druid.sql.dialect.oracle.ast.stmt.OracleForStatement;
-import com.alibaba.druid.sql.dialect.oracle.ast.stmt.OracleSelectPivot;
 import com.alibaba.druid.sql.dialect.oracle.parser.OracleFunctionDataType;
 import com.alibaba.druid.sql.dialect.oracle.parser.OracleProcedureDataType;
 import com.alibaba.druid.util.FnvHash;
@@ -1289,7 +1288,15 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         printExpr(conditionExpr, parameterized);
         this.indentCount--;
 
-        if (lines != this.lines) {
+        boolean println = lines != this.lines;
+        if (isPrettyFormat() && !println) {
+            List<String> afterComments = conditionExpr.getAfterCommentsDirect();
+            if (afterComments != null && !afterComments.isEmpty()) {
+                println = true;
+            }
+        }
+
+        if (println) {
             println();
         } else {
             print(' ');
@@ -2311,7 +2318,9 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             println();
         } else if ((parent instanceof SQLStatement
                 && !(parent instanceof OracleForStatement))
-                || parent instanceof OracleSelectPivot.Item) {
+                || (parent instanceof SQLSelectItem
+                && (parent.getParent() instanceof SQLPivot || parent.getParent() instanceof SQLUnpivot))
+        ) {
             this.indentCount++;
 
             println();
@@ -2370,6 +2379,13 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             this.indentCount++;
             for (int i = 0; i < itemSize; ++i) {
                 SQLExpr item = items.get(i);
+                if (isPrettyFormat() && item.hasBeforeComment()) {
+                    if (i != 0) {
+                        print(' ');
+                    }
+                    printlnComments(item.getBeforeCommentsDirect());
+                }
+
                 if (i != 0) {
                     if (groupItemSingleLine) {
                         println(", ");
@@ -2972,6 +2988,18 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             print(" (");
             printAndAccept(columns, ", ");
             print(')');
+        }
+
+        SQLPivot pivot = x.getPivot();
+        if (pivot != null) {
+            println();
+            pivot.accept(this);
+        }
+
+        SQLUnpivot unpivot = x.getUnpivot();
+        if (unpivot != null) {
+            println();
+            unpivot.accept(this);
         }
 
         if (isPrettyFormat() && x.hasAfterComment()) {
@@ -3901,16 +3929,22 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(SQLUnaryExpr x) {
-        print0(x.getOperator().name);
-
+        SQLUnaryOperator operator = x.getOperator();
+        print0(operator.name);
         SQLExpr expr = x.getExpr();
 
-        switch (x.getOperator()) {
+        switch (operator) {
             case BINARY:
             case Prior:
             case ConnectByRoot:
                 print(' ');
-                expr.accept(this);
+                if (operator != SQLUnaryOperator.Prior && expr instanceof SQLBinaryOpExpr) {
+                    print('(');
+                    expr.accept(this);
+                    print(')');
+                } else {
+                    expr.accept(this);
+                }
                 return false;
             default:
                 break;
@@ -5561,6 +5595,13 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         }
 
         printTableSourceExpr(x.getName());
+
+        SQLName on = x.getOn();
+        if (on != null) {
+            print(ucase ? " ON CLUSTER " : " on cluster ");
+            printExpr(on);
+        }
+
         this.indentCount++;
         for (int i = 0; i < x.getItems().size(); ++i) {
             SQLAlterTableItem item = x.getItems().get(i);
@@ -5741,6 +5782,15 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     public boolean visit(SQLAlterTableRenameColumn x) {
         print0(ucase ? "RENAME COLUMN " : "rename column ");
         x.getColumn().accept(this);
+        print0(ucase ? " TO " : " to ");
+        x.getTo().accept(this);
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLAlterTableRenameConstraint x) {
+        print0(ucase ? "RENAME CONSTRAINT " : "rename constraint ");
+        x.getConstraint().accept(this);
         print0(ucase ? " TO " : " to ");
         x.getTo().accept(this);
         return false;
@@ -11298,5 +11348,75 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     public void setNameQuote(char quote) {
         this.quote = quote;
+    }
+
+    @Override
+    public boolean visit(SQLPivot x) {
+        print0(ucase ? "PIVOT" : "pivot");
+        if (x.isXml()) {
+            print0(ucase ? " XML" : " xml");
+        }
+        print0(" (");
+        printAndAccept(x.getItems(), ", ");
+
+        if (x.getPivotFor().size() > 0) {
+            print0(ucase ? " FOR " : " for ");
+            if (x.getPivotFor().size() == 1) {
+                ((SQLExpr) x.getPivotFor().get(0)).accept(this);
+            } else {
+                print('(');
+                printAndAccept(x.getPivotFor(), ", ");
+                print(')');
+            }
+        }
+
+        if (x.getPivotIn().size() > 0) {
+            print0(ucase ? " IN (" : " in (");
+            printAndAccept(x.getPivotIn(), ", ");
+            print(')');
+        }
+
+        print(')');
+
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLUnpivot x) {
+        print0(ucase ? "UNPIVOT" : "unpivot");
+        if (x.getNullsIncludeType() != null) {
+            print(' ');
+            print0(SQLUnpivot.NullsIncludeType.toString(x.getNullsIncludeType(), ucase));
+        }
+
+        print0(" (");
+        if (x.getItems().size() == 1) {
+            ((SQLExpr) x.getItems().get(0)).accept(this);
+        } else {
+            print0(" (");
+            printAndAccept(x.getItems(), ", ");
+            print(')');
+        }
+
+        if (x.getPivotFor().size() > 0) {
+            print0(ucase ? " FOR " : " for ");
+            if (x.getPivotFor().size() == 1) {
+                ((SQLExpr) x.getPivotFor().get(0)).accept(this);
+            } else {
+                print('(');
+                printAndAccept(x.getPivotFor(), ", ");
+                print(')');
+            }
+        }
+
+        if (x.getPivotIn().size() > 0) {
+            print0(ucase ? " IN (" : " in (");
+            printAndAccept(x.getPivotIn(), ", ");
+            print(')');
+        }
+
+        print(')');
+
+        return false;
     }
 }

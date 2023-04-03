@@ -17,7 +17,13 @@ package com.alibaba.druid.bvt.sql.odps;
 
 import java.util.List;
 
+import com.alibaba.druid.DbType;
 import com.alibaba.druid.TestUtil;
+import com.alibaba.druid.sql.SQLUtils;
+import com.alibaba.druid.sql.parser.SQLParserFeature;
+import com.alibaba.druid.sql.parser.SQLParserUtils;
+import com.alibaba.druid.sql.parser.SQLStatementParser;
+import com.alibaba.druid.sql.visitor.VisitorFeature;
 import junit.framework.TestCase;
 
 import org.junit.Assert;
@@ -27,6 +33,8 @@ import com.alibaba.druid.sql.dialect.odps.parser.OdpsStatementParser;
 import com.alibaba.druid.sql.dialect.odps.visitor.OdpsSchemaStatVisitor;
 import com.alibaba.druid.sql.visitor.SchemaStatVisitor;
 
+import static org.junit.Assert.assertEquals;
+
 public class OdpsResourceTest extends TestCase {
     public void test_0() throws Exception {
         exec_test("bvt/parser/odps-0.txt");
@@ -34,6 +42,26 @@ public class OdpsResourceTest extends TestCase {
 
     public void test_9() throws Exception {
         exec_test("bvt/parser/odps-9.txt");
+    }
+
+    public void test_10() throws Exception {
+        exec_test("bvt/parser/odps-10.txt");
+    }
+
+    public void test_11() throws Exception {
+        exec_test("bvt/parser/odps-11.txt");
+    }
+
+    public void test_12() throws Exception {
+        exec_test("bvt/parser/odps-12.txt");
+    }
+//
+//    public void test_13() throws Exception {
+//        exec_test("bvt/parser/odps-13.txt");
+//    }
+
+    public void test_14() throws Exception {
+        exec_test("bvt/parser/odps-14.txt");
     }
 
     public void exec_test(String resource) throws Exception {
@@ -46,7 +74,7 @@ public class OdpsResourceTest extends TestCase {
             expect = items[1].trim();
         }
 
-        OdpsStatementParser parser = new OdpsStatementParser(sql);
+        OdpsStatementParser parser = new OdpsStatementParser(sql, SQLParserFeature.KeepComments);
         List<SQLStatement> statementList = parser.parseStatementList();
         SQLStatement stmt = statementList.get(0);
 
@@ -56,7 +84,7 @@ public class OdpsResourceTest extends TestCase {
         stmt.accept(visitor);
 
         if (expect != null) {
-            String result = stmt.toString();
+            String result = stmt.toString(VisitorFeature.OutputPrettyFormat);
             assertEquals(expect, result);
         }
     }

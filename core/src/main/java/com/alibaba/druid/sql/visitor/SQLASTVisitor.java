@@ -776,6 +776,13 @@ public interface SQLASTVisitor {
     default void endVisit(SQLAlterTableRenameColumn x) {
     }
 
+    default boolean visit(SQLAlterTableRenameConstraint x) {
+        return true;
+    }
+
+    default void endVisit(SQLAlterTableRenameConstraint x) {
+    }
+
     default boolean visit(SQLColumnReference x) {
         return true;
     }
@@ -2471,6 +2478,20 @@ public interface SQLASTVisitor {
     }
 
     default void endVisit(SQLOptimizeStatement x) {
+    }
+
+    default boolean visit(SQLPivot x) {
+        return true;
+    }
+
+    default void endVisit(SQLPivot x) {
+    }
+
+    default boolean visit(SQLUnpivot x) {
+        return true;
+    }
+
+    default void endVisit(SQLUnpivot x) {
     }
 
 }
