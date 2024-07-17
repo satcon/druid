@@ -63,9 +63,11 @@ public enum Token {
     UNIQUE("UNIQUE"),
     FOREIGN("FOREIGN"),
     REFERENCES("REFERENCES"),
+    LANGUAGE("LANGUAGE"),
 
     EXPLAIN("EXPLAIN"),
     FOR("FOR"),
+    REVERSE("REVERSE"),
     IF("IF"),
 
     LOCAL("LOCAL"),
@@ -98,6 +100,7 @@ public enum Token {
     THEN("THEN"),
     ELSE("ELSE"),
     ELSIF("ELSIF"),
+    ELSEIF("ELSEIF"),
     END("END"),
     EXISTS("EXISTS"),
     IN("IN"),
@@ -152,6 +155,8 @@ public enum Token {
     DIV("DIV"),
 
     //postgresql
+    GET("GET"),
+    DIAGNOSTICS("DIAGNOSTICS"),
     WINDOW("WINDOW"),
     OFFSET("OFFSET"),
     ROW("ROW"),
@@ -262,6 +267,7 @@ public enum Token {
     LITERAL_HEX,
     LITERAL_CHARS,
     LITERAL_NCHARS,
+    LITERAL_TEXT_BLOCK,
 
     CODE, // odps
 
@@ -282,6 +288,12 @@ public enum Token {
     SORT,
     LATERAL,
 
+    // clickhouse
+    PREWHERE("PREWHERE"),
+    SETTINGS("SETTINGS"),
+    FINAL("FINAL"),
+    TTL("TTL"),
+
     // Teradata
     SEL("SEL"),
     LOCKING("LOCKING"),
@@ -301,7 +313,7 @@ public enum Token {
 
     // StarRocks
     BIGINT("BIGINT"),
-    BITMAP("BITMAP"),
+//    BITMAP("BITMAP"),
 
     LPAREN("("),
     RPAREN(")"),
@@ -313,7 +325,7 @@ public enum Token {
     COMMA(","),
     DOT("."),
     DOTDOT(".."),
-    DOTDOTDOT("..,"),
+    DOTDOTDOT("..."),
     EQ("="),
     GT(">"),
     LT("<"),
@@ -328,6 +340,7 @@ public enum Token {
     QUES("?"),
     QUESQUES("??"),
     QUESBAR("?|"),
+    QUESQUESBAR("??|"),
     QUESAMP("?&"),
     COLON(":"),
     COLONCOLON("::"),
@@ -357,7 +370,9 @@ public enum Token {
     CARETEQ("^="),
     PERCENT("%"),
     LTLT("<<"),
+    LTLTLT("<<<"),
     GTGT(">>"),
+    GTGTGT(">>>"),
     MONKEYS_AT("@"),
     MONKEYS_AT_AT("@@"),
     POUND("#"),

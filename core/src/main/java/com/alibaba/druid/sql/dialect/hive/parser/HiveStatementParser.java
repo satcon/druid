@@ -25,6 +25,7 @@ import com.alibaba.druid.sql.dialect.hive.ast.HiveMultiInsertStatement;
 import com.alibaba.druid.sql.dialect.hive.stmt.HiveLoadDataStatement;
 import com.alibaba.druid.sql.parser.*;
 import com.alibaba.druid.util.FnvHash;
+import com.alibaba.druid.util.FnvHash.Constants;
 
 import java.util.List;
 
@@ -43,6 +44,10 @@ public class HiveStatementParser extends SQLStatementParser {
 
     public HiveStatementParser(Lexer lexer) {
         super(new HiveExprParser(lexer));
+    }
+
+    public HiveStatementParser(SQLExprParser exprParser) {
+        super(exprParser);
     }
 
     public HiveSelectParser createSQLSelectParser() {
@@ -230,7 +235,8 @@ public class HiveStatementParser extends SQLStatementParser {
                 return true;
             }
 
-            if (lexer.identifierEquals(FnvHash.Constants.DATABASES)) {
+            if (lexer.identifierEquals(FnvHash.Constants.DATABASES)
+                    || lexer.identifierEquals(Constants.SCHEMAS)) {
                 lexer.nextToken();
 
                 SQLShowDatabasesStatement stmt = parseShowDatabases(false);
@@ -331,6 +337,20 @@ public class HiveStatementParser extends SQLStatementParser {
                 return true;
             }
 
+            if (lexer.identifierEquals(FnvHash.Constants.FUNCTIONS)) {
+                lexer.nextToken();
+
+                SQLShowFunctionsStatement stmt = new SQLShowFunctionsStatement();
+                if (lexer.token() == Token.LIKE) {
+                    lexer.nextToken();
+                    SQLExpr like = this.exprParser.expr();
+                    stmt.setLike(like);
+                }
+
+                statementList.add(stmt);
+                return true;
+            }
+
             throw new ParserException("TODO " + lexer.info());
         }
 
@@ -380,11 +400,8 @@ public class HiveStatementParser extends SQLStatementParser {
         return parseHiveCreateFunction();
     }
 
-    public SQLCreateIndexStatement parseCreateIndex(boolean acceptCreate) {
-        if (acceptCreate) {
-            accept(Token.CREATE);
-        }
-
+    public SQLCreateIndexStatement parseCreateIndex() {
+        accept(Token.CREATE);
         accept(Token.INDEX);
 
         SQLCreateIndexStatement stmt = new SQLCreateIndexStatement(dbType);
@@ -534,7 +551,7 @@ public class HiveStatementParser extends SQLStatementParser {
         return stmt;
     }
 
-    protected SQLStatement parseAlterDatabase() {
+    protected SQLStatement alterDatabase() {
         accept(Token.ALTER);
         if (lexer.token() == Token.SCHEMA) {
             lexer.nextToken();
@@ -559,8 +576,8 @@ public class HiveStatementParser extends SQLStatementParser {
         return stmt;
     }
 
-    protected SQLStatement parseAlterSchema() {
-        return parseAlterDatabase();
+    protected SQLStatement alterSchema() {
+        return alterDatabase();
     }
 
     public SQLStatement parseCreateSchema() {

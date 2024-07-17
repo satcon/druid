@@ -33,11 +33,11 @@ import com.alibaba.druid.util.FnvHash;
 import java.util.List;
 
 public class SQLServerOutputVisitor extends SQLASTOutputVisitor implements SQLServerASTVisitor {
-    public SQLServerOutputVisitor(Appendable appender) {
+    public SQLServerOutputVisitor(StringBuilder appender) {
         super(appender, DbType.sqlserver);
     }
 
-    public SQLServerOutputVisitor(Appendable appender, boolean parameterized) {
+    public SQLServerOutputVisitor(StringBuilder appender, boolean parameterized) {
         super(appender, parameterized);
         this.dbType = DbType.sqlserver;
     }
@@ -60,38 +60,11 @@ public class SQLServerOutputVisitor extends SQLASTOutputVisitor implements SQLSe
         }
 
         printSelectList(x.getSelectList());
-
-        SQLExprTableSource into = x.getInto();
-        if (into != null) {
-            println();
-            print0(ucase ? "INTO " : "into ");
-            printTableSource(into);
-        }
-
-        SQLTableSource from = x.getFrom();
-        if (from != null) {
-            println();
-            print0(ucase ? "FROM " : "from ");
-            printTableSource(from);
-        }
-
-        SQLExpr where = x.getWhere();
-        if (where != null) {
-            printWhere(where);
-        }
-
-        SQLSelectGroupByClause groupBy = x.getGroupBy();
-        if (groupBy != null) {
-            println();
-            visit(groupBy);
-        }
-
-        SQLOrderBy orderBy = x.getOrderBy();
-        if (orderBy != null) {
-            println();
-            visit(orderBy);
-        }
-
+        printInto(x);
+        printFrom(x);
+        printWhere(x);
+        printGroupBy(x);
+        printOrderBy(x);
         printFetchFirst(x);
 
         return false;
@@ -106,7 +79,7 @@ public class SQLServerOutputVisitor extends SQLASTOutputVisitor implements SQLSe
 
         boolean paren = false;
 
-        if (x.getParent() instanceof SQLServerUpdateStatement || x.getParent() instanceof SQLServerInsertStatement) {
+        if (x.getParent() instanceof SQLServerUpdateStatement || x.getParent() instanceof SQLServerInsertStatement || x.isParentheses()) {
             paren = true;
             print('(');
         }
@@ -133,6 +106,10 @@ public class SQLServerOutputVisitor extends SQLASTOutputVisitor implements SQLSe
 
     @Override
     public boolean visit(SQLServerInsertStatement x) {
+        if (x.getWith() != null) {
+            x.getWith().accept(this);
+            println();
+        }
         print0(ucase ? "INSERT " : "insert ");
 
         if (x.getTop() != null) {
@@ -230,6 +207,11 @@ public class SQLServerOutputVisitor extends SQLASTOutputVisitor implements SQLSe
         if (alias != null) {
             print(' ');
             print0(alias);
+        }
+
+        if (isPrettyFormat() && x.hasAfterComment()) {
+            print(' ');
+            printlnComment(x.getAfterCommentsDirect());
         }
 
         if (x.getHints() != null && x.getHints().size() > 0) {

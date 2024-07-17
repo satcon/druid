@@ -20,11 +20,10 @@ import com.alibaba.druid.sql.ast.*;
 import com.alibaba.druid.sql.ast.expr.*;
 import com.alibaba.druid.sql.ast.statement.*;
 import com.alibaba.druid.sql.dialect.ads.visitor.AdsOutputVisitor;
-import com.alibaba.druid.sql.dialect.antspark.visitor.AntsparkOutputVisitor;
-import com.alibaba.druid.sql.dialect.antspark.visitor.AntsparkSchemaStatVisitor;
+import com.alibaba.druid.sql.dialect.bigquery.visitor.BigQueryOutputVisitor;
 import com.alibaba.druid.sql.dialect.blink.vsitor.BlinkOutputVisitor;
-import com.alibaba.druid.sql.dialect.clickhouse.visitor.ClickSchemaStatVisitor;
-import com.alibaba.druid.sql.dialect.clickhouse.visitor.ClickhouseOutputVisitor;
+import com.alibaba.druid.sql.dialect.clickhouse.visitor.CKOutputVisitor;
+import com.alibaba.druid.sql.dialect.clickhouse.visitor.CKStatVisitor;
 import com.alibaba.druid.sql.dialect.db2.visitor.DB2OutputVisitor;
 import com.alibaba.druid.sql.dialect.db2.visitor.DB2SchemaStatVisitor;
 import com.alibaba.druid.sql.dialect.h2.visitor.H2OutputVisitor;
@@ -35,6 +34,9 @@ import com.alibaba.druid.sql.dialect.hive.stmt.HiveCreateTableStatement;
 import com.alibaba.druid.sql.dialect.hive.visitor.HiveASTVisitorAdapter;
 import com.alibaba.druid.sql.dialect.hive.visitor.HiveOutputVisitor;
 import com.alibaba.druid.sql.dialect.hive.visitor.HiveSchemaStatVisitor;
+import com.alibaba.druid.sql.dialect.holo.visitor.HoloOutputVisitor;
+import com.alibaba.druid.sql.dialect.impala.visitor.ImpalaOutputVisitor;
+import com.alibaba.druid.sql.dialect.infomix.visitor.InformixOutputVisitor;
 import com.alibaba.druid.sql.dialect.mysql.ast.MySqlObject;
 import com.alibaba.druid.sql.dialect.mysql.ast.clause.MySqlSelectIntoStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlInsertStatement;
@@ -59,6 +61,8 @@ import com.alibaba.druid.sql.dialect.oscar.visitor.OscarOutputVisitor;
 import com.alibaba.druid.sql.dialect.postgresql.visitor.PGOutputVisitor;
 import com.alibaba.druid.sql.dialect.postgresql.visitor.PGSchemaStatVisitor;
 import com.alibaba.druid.sql.dialect.presto.visitor.PrestoOutputVisitor;
+import com.alibaba.druid.sql.dialect.spark.visitor.SparkOutputVisitor;
+import com.alibaba.druid.sql.dialect.spark.visitor.SparkSchemaStatVisitor;
 import com.alibaba.druid.sql.dialect.sqlserver.visitor.SQLServerOutputVisitor;
 import com.alibaba.druid.sql.dialect.sqlserver.visitor.SQLServerSchemaStatVisitor;
 import com.alibaba.druid.sql.dialect.starrocks.visitor.StarRocksOutputVisitor;
@@ -70,6 +74,7 @@ import com.alibaba.druid.support.logging.LogFactory;
 import com.alibaba.druid.util.*;
 
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -79,7 +84,7 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 public class SQLUtils {
-    public static final Charset UTF8 = Charset.forName("UTF-8");
+    public static final Charset UTF8 = StandardCharsets.UTF_8;
 
     private static final SQLParserFeature[] FORMAT_DEFAULT_FEATURES = {
             SQLParserFeature.KeepComments,
@@ -169,7 +174,7 @@ public class SQLUtils {
     }
 
     public static String toAntsparkString(SQLObject sqlObject, FormatOption option) {
-        return toSQLString(sqlObject, DbType.antspark, option);
+        return toSQLString(sqlObject, DbType.spark, option);
     }
 
     public static String toMySqlString(SQLObject sqlObject) {
@@ -380,14 +385,20 @@ public class SQLUtils {
     }
 
     public static String toSQLString(List<SQLStatement> statementList, DbType dbType, List<Object> parameters) {
-        return toSQLString(statementList, dbType, parameters, null, null);
+        return toSQLString(statementList, dbType, parameters, null);
     }
 
-    public static String toSQLString(List<SQLStatement> statementList,
-                                     DbType dbType,
-                                     List<Object> parameters,
-                                     FormatOption option) {
+    public static String toSQLString(
+            List<SQLStatement> statementList,
+            DbType dbType,
+            List<Object> parameters,
+            FormatOption option
+    ) {
         return toSQLString(statementList, dbType, parameters, option, null);
+    }
+
+    public static String toSQLString(List<SQLStatement> statementList, DbType dbType, SQLASTOutputVisitor visitor) {
+        return toSQLString(statementList, dbType, (List<Object>) null, null, visitor);
     }
 
     public static String toSQLString(
@@ -399,14 +410,23 @@ public class SQLUtils {
     ) {
         StringBuilder out = new StringBuilder();
         SQLASTOutputVisitor visitor = createFormatOutputVisitor(out, statementList, dbType);
-        if (parameters != null) {
-            visitor.setInputParameters(parameters);
-        }
-
         if (option == null) {
             option = DEFAULT_FORMAT_OPTION;
         }
         visitor.setFeatures(option.features);
+        return toSQLString(statementList, dbType, parameters, tableMapping, visitor);
+    }
+
+    public static String toSQLString(
+            List<SQLStatement> statementList,
+            DbType dbType,
+            List<Object> parameters,
+            Map<String, String> tableMapping,
+            SQLASTOutputVisitor visitor
+    ) {
+        if (parameters != null) {
+            visitor.setInputParameters(parameters);
+        }
 
         if (tableMapping != null) {
             visitor.setTableMapping(tableMapping);
@@ -473,16 +493,18 @@ public class SQLUtils {
             }
         }
 
-        return out.toString();
+        return visitor.toString();
     }
 
-    public static SQLASTOutputVisitor createOutputVisitor(Appendable out, DbType dbType) {
+    public static SQLASTOutputVisitor createOutputVisitor(StringBuilder out, DbType dbType) {
         return createFormatOutputVisitor(out, null, dbType);
     }
 
-    public static SQLASTOutputVisitor createFormatOutputVisitor(Appendable out,
-                                                                List<SQLStatement> statementList,
-                                                                DbType dbType) {
+    public static SQLASTOutputVisitor createFormatOutputVisitor(
+            StringBuilder out,
+            List<SQLStatement> statementList,
+            DbType dbType
+    ) {
         if (dbType == null) {
             if (statementList != null && statementList.size() > 0) {
                 dbType = statementList.get(0).getDbType();
@@ -506,7 +528,11 @@ public class SQLUtils {
             case tidb:
                 return new MySqlOutputVisitor(out);
             case postgresql:
+            case greenplum:
+            case edb:
                 return new PGOutputVisitor(out);
+            case hologres:
+                return new HoloOutputVisitor(out);
             case sqlserver:
             case jtds:
                 return new SQLServerOutputVisitor(out);
@@ -516,22 +542,29 @@ public class SQLUtils {
                 return new OdpsOutputVisitor(out);
             case h2:
                 return new H2OutputVisitor(out);
+            case informix:
+                return new InformixOutputVisitor(out);
             case hive:
                 return new HiveOutputVisitor(out);
             case ads:
                 return new AdsOutputVisitor(out);
             case blink:
                 return new BlinkOutputVisitor(out);
-            case antspark:
-                return new AntsparkOutputVisitor(out);
+            case spark:
+                return new SparkOutputVisitor(out);
             case presto:
+            case trino:
                 return new PrestoOutputVisitor(out);
             case clickhouse:
-                return new ClickhouseOutputVisitor(out);
+                return new CKOutputVisitor(out);
             case oscar:
                 return new OscarOutputVisitor(out);
             case starrocks:
                 return new StarRocksOutputVisitor(out);
+            case bigquery:
+                return new BigQueryOutputVisitor(out);
+            case impala:
+                return new ImpalaOutputVisitor(out);
             default:
                 return new SQLASTOutputVisitor(out, dbType);
         }
@@ -568,6 +601,8 @@ public class SQLUtils {
             case elastic_search:
                 return new MySqlSchemaStatVisitor(repository);
             case postgresql:
+            case greenplum:
+            case edb:
                 return new PGSchemaStatVisitor(repository);
             case sqlserver:
             case jtds:
@@ -580,10 +615,10 @@ public class SQLUtils {
                 return new H2SchemaStatVisitor(repository);
             case hive:
                 return new HiveSchemaStatVisitor(repository);
-            case antspark:
-                return new AntsparkSchemaStatVisitor(repository);
+            case spark:
+                return new SparkSchemaStatVisitor(repository);
             case clickhouse:
-                return new ClickSchemaStatVisitor(repository);
+                return new CKStatVisitor(repository);
             default:
                 return new SchemaStatVisitor(repository);
         }
@@ -1768,6 +1803,10 @@ public class SQLUtils {
             features = VisitorFeature.config(features, feature, state);
         }
 
+        public void configTo(SQLASTOutputVisitor v) {
+            v.setFeatures(features);
+        }
+
         public final boolean isEnabled(VisitorFeature feature) {
             return VisitorFeature.isEnabled(this.features, feature);
         }
@@ -1975,6 +2014,18 @@ public class SQLUtils {
         return false;
     }
 
+    public static boolean replaceInParent(SQLDataType expr, SQLDataType target) {
+        SQLObject parent = expr.getParent();
+        if (parent instanceof SQLColumnDefinition) {
+            ((SQLColumnDefinition) parent).setDataType(target);
+        } else if (parent instanceof SQLCastExpr) {
+            ((SQLCastExpr) parent).setDataType(target);
+        } else {
+            return false;
+        }
+        return true;
+    }
+
     public static boolean replaceInParent(SQLExpr expr, SQLExpr target) {
         if (expr == null) {
             return false;
@@ -1986,6 +2037,15 @@ public class SQLUtils {
             return ((SQLReplaceable) parent).replace(expr, target);
         }
 
+        return false;
+    }
+
+    public static boolean replaceInParent(SQLSelect cmp, SQLSelect dest) {
+        SQLObject parent = cmp.getParent();
+        if (parent instanceof SQLSelectStatement) {
+            ((SQLSelectStatement) parent).setSelect(dest);
+            return true;
+        }
         return false;
     }
 

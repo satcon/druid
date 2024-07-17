@@ -38,15 +38,15 @@ public class HiveOutputVisitor extends SQLASTOutputVisitor implements HiveASTVis
         super.quote = '`';
     }
 
-    public HiveOutputVisitor(Appendable appender) {
+    public HiveOutputVisitor(StringBuilder appender) {
         super(appender, DbType.hive);
     }
 
-    public HiveOutputVisitor(Appendable appender, DbType dbType) {
+    public HiveOutputVisitor(StringBuilder appender, DbType dbType) {
         super(appender, dbType);
     }
 
-    public HiveOutputVisitor(Appendable appender, boolean parameterized) {
+    public HiveOutputVisitor(StringBuilder appender, boolean parameterized) {
         super(appender, parameterized);
         dbType = DbType.hive;
     }
@@ -502,5 +502,13 @@ public class HiveOutputVisitor extends SQLASTOutputVisitor implements HiveASTVis
         print0(ucase ? "ADD JAR " : "add jar ");
         print0(x.getPath());
         return false;
+    }
+
+    @Override
+    protected void printTableOptionsPrefix(SQLCreateTableStatement x) {
+        println();
+        print0(ucase ? "TBLPROPERTIES (" : "tblproperties (");
+        incrementIndent();
+        println();
     }
 }

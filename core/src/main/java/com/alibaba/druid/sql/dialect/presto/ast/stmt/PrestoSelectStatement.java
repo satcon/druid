@@ -16,7 +16,6 @@
 package com.alibaba.druid.sql.dialect.presto.ast.stmt;
 
 import com.alibaba.druid.DbType;
-import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.ast.statement.SQLSelect;
 import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.druid.sql.dialect.presto.visitor.PrestoVisitor;
@@ -28,13 +27,13 @@ import com.alibaba.druid.sql.visitor.SQLASTVisitor;
  * author zhangcanlong
  * date 2022/01/11
  */
-public class PrestoSelectStatement extends SQLSelectStatement implements SQLStatement {
+public class PrestoSelectStatement extends SQLSelectStatement implements PrestoSQLStatement {
     public PrestoSelectStatement() {
-        super(DbType.postgresql);
+        super(DbType.presto);
     }
 
     public PrestoSelectStatement(SQLSelect select) {
-        super(select, DbType.postgresql);
+        super(select, DbType.presto);
     }
 
     @Override
@@ -47,9 +46,6 @@ public class PrestoSelectStatement extends SQLSelectStatement implements SQLStat
     }
 
     public void accept0(PrestoVisitor visitor) {
-        if (visitor.visit(this)) {
-            this.acceptChild(visitor, this.select);
-        }
-        visitor.endVisit(this);
+        super.accept0(visitor);
     }
 }

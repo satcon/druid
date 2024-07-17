@@ -96,6 +96,13 @@ public class OdpsExprParser extends SQLExprParser {
             String stringVal = lexer.stringVal();
             long hash_lower = lexer.hashLCase();
 
+            int sourceLine = -1, sourceColumn = -1;
+            if (lexer.isKeepSourceLocation()) {
+                lexer.computeRowAndColumn();
+                sourceLine = lexer.getPosLine();
+                sourceColumn = lexer.getPosColumn();
+            }
+
             lexer.nextTokenComma();
 
             if (FnvHash.Constants.DATETIME == hash_lower
@@ -134,6 +141,10 @@ public class OdpsExprParser extends SQLExprParser {
                     expr = this.primaryRest(expr);
                     expr = this.exprRest(expr);
                 }
+            }
+
+            if (sourceLine != -1) {
+                expr.setSource(sourceLine, sourceColumn);
             }
         } else {
             expr = expr();
@@ -193,6 +204,10 @@ public class OdpsExprParser extends SQLExprParser {
                 return propertyExpr;
             }
             expr = dotRest(expr);
+            if (expr instanceof SQLPropertyExpr) {
+                SQLPropertyExpr spe = (SQLPropertyExpr) expr;
+                spe.setSplitString(":");
+            }
             return expr;
         }
 
@@ -220,10 +235,23 @@ public class OdpsExprParser extends SQLExprParser {
         if (lexer.token() == Token.LPAREN
                 && expr instanceof SQLIdentifierExpr
                 && ((SQLIdentifierExpr) expr).nameHashCode64() == FnvHash.Constants.TRANSFORM) {
+            String name = lexer.stringVal();
             OdpsTransformExpr transformExpr = new OdpsTransformExpr();
             lexer.nextToken();
-            this.exprList(transformExpr.getInputColumns(), transformExpr);
+            List<SQLExpr> inputColumns = transformExpr.getInputColumns();
+            this.exprList(inputColumns, transformExpr);
             accept(Token.RPAREN);
+
+            if (inputColumns.size() == 2
+                    && inputColumns.get(1) instanceof SQLBinaryOpExpr
+                    && ((SQLBinaryOpExpr) inputColumns.get(1)).getOperator() == SQLBinaryOperator.SubGt
+            ) {
+                SQLMethodInvokeExpr methodInvokeExpr = new SQLMethodInvokeExpr(name);
+                for (SQLExpr item : inputColumns) {
+                    methodInvokeExpr.addArgument(item);
+                }
+                return primaryRest(methodInvokeExpr);
+            }
 
             if (lexer.identifierEquals(FnvHash.Constants.ROW)) {
                 SQLExternalRecordFormat recordFormat = this.parseRowFormat();
@@ -279,7 +307,7 @@ public class OdpsExprParser extends SQLExprParser {
             if (lexer.token() == Token.IDENTIFIER) { //.GSON
                 Lexer.SavePoint mark = lexer.mark();
 
-                String methodName = lexer.stringVal();
+                StringBuilder methodName = new StringBuilder(lexer.stringVal());
                 lexer.nextToken();
                 switch (lexer.token()) {
                     case ON:
@@ -303,11 +331,11 @@ public class OdpsExprParser extends SQLExprParser {
 
                 while (lexer.token() == Token.DOT) {
                     lexer.nextToken();
-                    methodName += '.' + lexer.stringVal();
+                    methodName.append('.').append(lexer.stringVal());
                     lexer.nextToken();
                 }
 
-                newExpr.setMethodName(methodName);
+                newExpr.setMethodName(methodName.toString());
 
                 if (lexer.token() == Token.LT) {
                     lexer.nextToken();
@@ -369,19 +397,20 @@ public class OdpsExprParser extends SQLExprParser {
                 }
             } else if (lexer.identifierEquals("java") || lexer.identifierEquals("com")) {
                 SQLName name = this.name();
-                String strName = ident.getName() + ' ' + name.toString();
+                StringBuilder strName = new StringBuilder();
+                strName.append(ident.getName()).append(' ').append(name.toString());
                 if (lexer.token() == Token.LT) {
                     lexer.nextToken();
                     for (int i = 0; lexer.token() != Token.GT; i++) {
                         if (i != 0) {
-                            strName += ", ";
+                            strName.append(", ");
                         }
                         SQLName arg = this.name();
-                        strName += arg.toString();
+                        strName.append(arg.toString());
                     }
                     lexer.nextToken();
                 }
-                ident.setName(strName);
+                ident.setName(strName.toString());
             }
         }
 
