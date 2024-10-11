@@ -31,6 +31,7 @@ public class StarRocksCreateTableStatement extends SQLCreateTableStatement {
     protected boolean lessThan;
     protected boolean fixedRange;
     protected boolean startEnd;
+    protected SQLExpr engine;
 
     protected final List<SQLExpr> orderBy = new ArrayList<>();
 
@@ -38,6 +39,7 @@ public class StarRocksCreateTableStatement extends SQLCreateTableStatement {
     protected Map<SQLExpr, List<SQLExpr>> fixedRangeMap = new LinkedHashMap<>();
     protected Map<SQLCharExpr, SQLCharExpr> propertiesMap = new LinkedHashMap<>();
     protected Map<SQLCharExpr, SQLCharExpr> lBracketPropertiesMap = new LinkedHashMap<>();
+    protected Map<SQLCharExpr, SQLCharExpr> brokerPropertiesMap = new LinkedHashMap<>();
 
     public StarRocksCreateTableStatement() {
         super(DbType.starrocks);
@@ -51,12 +53,20 @@ public class StarRocksCreateTableStatement extends SQLCreateTableStatement {
         return lBracketPropertiesMap;
     }
 
+    public Map<SQLCharExpr, SQLCharExpr> getBrokerPropertiesMap() {
+        return brokerPropertiesMap;
+    }
+
     public void setPropertiesMap(Map<SQLCharExpr, SQLCharExpr> propertiesMap) {
         this.propertiesMap = propertiesMap;
     }
 
     public void setlBracketPropertiesMap(Map<SQLCharExpr, SQLCharExpr> lBracketPropertiesMap) {
         this.lBracketPropertiesMap = lBracketPropertiesMap;
+    }
+
+    public void setBrokerPropertiesMap(Map<SQLCharExpr, SQLCharExpr> brokerPropertiesMap) {
+        this.brokerPropertiesMap = brokerPropertiesMap;
     }
 
     public void setStartEnd(boolean startEnd) {
@@ -185,6 +195,17 @@ public class StarRocksCreateTableStatement extends SQLCreateTableStatement {
 
     public List<SQLExpr> getPartitionBy() {
         return partitionBy;
+    }
+
+    public SQLExpr getEngine() {
+        return engine;
+    }
+
+    public void setEngine(SQLExpr x) {
+        if (x != null) {
+            x.setParent(this);
+        }
+        this.engine = x;
     }
 
     @Override

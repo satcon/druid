@@ -249,8 +249,8 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         }
         println();
         print0(ucase ? "FROM " : "from ");
-        if (x.getCommentsAfaterFrom() != null) {
-            printAfterComments(x.getCommentsAfaterFrom());
+        if (x.getCommentsAfterFrom() != null) {
+            printAfterComments(x.getCommentsAfterFrom());
             println();
         }
         printTableSource(from);
@@ -3767,7 +3767,9 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
             }
             return false;
         }
-
+        if (x.isParenthesized()) {
+            print("(");
+        }
         String charset = x.getCharset();
         String collate = x.getCollate();
         String text = x.getText();
@@ -3792,6 +3794,9 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         if (collate != null) {
             print(" COLLATE ");
             print(collate);
+        }
+        if (x.isParenthesized()) {
+            print(")");
         }
         return false;
     }

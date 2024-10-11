@@ -60,7 +60,9 @@ public class PGDropSchemaStatement extends SQLStatementImpl implements PGSQLStat
     }
 
     protected void accept0(SQLASTVisitor visitor) {
-        accept0((PGASTVisitor) visitor);
+        if (visitor instanceof PGASTVisitor) {
+            accept0((PGASTVisitor) visitor);
+        }
     }
 
     @Override

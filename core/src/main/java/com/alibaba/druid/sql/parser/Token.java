@@ -43,6 +43,7 @@ public enum Token {
     NULL("NULL"),
     NOT("NOT"),
     DISTINCT("DISTINCT"),
+    DISTINCTROW("DISTINCTROW"),
 
     TABLE("TABLE"),
     TABLESPACE("TABLESPACE"),
@@ -64,6 +65,7 @@ public enum Token {
     FOREIGN("FOREIGN"),
     REFERENCES("REFERENCES"),
     LANGUAGE("LANGUAGE"),
+    PARTIAL("PARTIAL"),
 
     EXPLAIN("EXPLAIN"),
     FOR("FOR"),
@@ -254,6 +256,7 @@ public enum Token {
 
     ARRAY("ARRAY"),
     DISTRIBUTE("DISTRIBUTE"),
+    OPTION("OPTION"),
 
     // hive
 
@@ -293,6 +296,7 @@ public enum Token {
     SETTINGS("SETTINGS"),
     FINAL("FINAL"),
     TTL("TTL"),
+    CODEC("CODEC"),
 
     // Teradata
     SEL("SEL"),
@@ -314,6 +318,19 @@ public enum Token {
     // StarRocks
     BIGINT("BIGINT"),
 //    BITMAP("BITMAP"),
+    // Redshift
+    ENCODE("ENCODE"),
+    DISTSTYLE("DISTSTYLE"),
+    AUTO("AUTO"),
+    EVEN("EVEN"),
+    DISTKEY("DISTKEY"),
+    SORTKEY("SORTKEY"),
+    COMPOUND("COMPOUND"),
+    INTERLEAVED("INTERLEAVED"),
+    BACKUP("BACKUP"),
+    TABLET("TABLET"),
+    REPEATABLE("REPEATABLE"),
+    TABLESAMPLE("TABLESAMPLE"),
 
     LPAREN("("),
     RPAREN(")"),

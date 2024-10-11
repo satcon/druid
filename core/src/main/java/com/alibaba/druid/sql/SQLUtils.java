@@ -19,22 +19,23 @@ import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.ast.*;
 import com.alibaba.druid.sql.ast.expr.*;
 import com.alibaba.druid.sql.ast.statement.*;
-import com.alibaba.druid.sql.dialect.ads.visitor.AdsOutputVisitor;
+import com.alibaba.druid.sql.dialect.athena.visitor.AthenaOutputVisitor;
 import com.alibaba.druid.sql.dialect.bigquery.visitor.BigQueryOutputVisitor;
 import com.alibaba.druid.sql.dialect.blink.vsitor.BlinkOutputVisitor;
 import com.alibaba.druid.sql.dialect.clickhouse.visitor.CKOutputVisitor;
 import com.alibaba.druid.sql.dialect.clickhouse.visitor.CKStatVisitor;
 import com.alibaba.druid.sql.dialect.db2.visitor.DB2OutputVisitor;
 import com.alibaba.druid.sql.dialect.db2.visitor.DB2SchemaStatVisitor;
+import com.alibaba.druid.sql.dialect.doris.visitor.DorisOutputVisitor;
+import com.alibaba.druid.sql.dialect.gaussdb.visitor.GaussDbOutputVisitor;
 import com.alibaba.druid.sql.dialect.h2.visitor.H2OutputVisitor;
 import com.alibaba.druid.sql.dialect.h2.visitor.H2SchemaStatVisitor;
 import com.alibaba.druid.sql.dialect.hive.ast.HiveInsert;
 import com.alibaba.druid.sql.dialect.hive.ast.HiveInsertStatement;
-import com.alibaba.druid.sql.dialect.hive.stmt.HiveCreateTableStatement;
 import com.alibaba.druid.sql.dialect.hive.visitor.HiveASTVisitorAdapter;
 import com.alibaba.druid.sql.dialect.hive.visitor.HiveOutputVisitor;
 import com.alibaba.druid.sql.dialect.hive.visitor.HiveSchemaStatVisitor;
-import com.alibaba.druid.sql.dialect.holo.visitor.HoloOutputVisitor;
+import com.alibaba.druid.sql.dialect.hologres.visitor.HologresOutputVisitor;
 import com.alibaba.druid.sql.dialect.impala.visitor.ImpalaOutputVisitor;
 import com.alibaba.druid.sql.dialect.infomix.visitor.InformixOutputVisitor;
 import com.alibaba.druid.sql.dialect.mysql.ast.MySqlObject;
@@ -61,6 +62,7 @@ import com.alibaba.druid.sql.dialect.oscar.visitor.OscarOutputVisitor;
 import com.alibaba.druid.sql.dialect.postgresql.visitor.PGOutputVisitor;
 import com.alibaba.druid.sql.dialect.postgresql.visitor.PGSchemaStatVisitor;
 import com.alibaba.druid.sql.dialect.presto.visitor.PrestoOutputVisitor;
+import com.alibaba.druid.sql.dialect.redshift.visitor.RedshiftOutputVisitor;
 import com.alibaba.druid.sql.dialect.spark.visitor.SparkOutputVisitor;
 import com.alibaba.druid.sql.dialect.spark.visitor.SparkSchemaStatVisitor;
 import com.alibaba.druid.sql.dialect.sqlserver.visitor.SQLServerOutputVisitor;
@@ -73,8 +75,6 @@ import com.alibaba.druid.support.logging.Log;
 import com.alibaba.druid.support.logging.LogFactory;
 import com.alibaba.druid.util.*;
 
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -84,8 +84,6 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 public class SQLUtils {
-    public static final Charset UTF8 = StandardCharsets.UTF_8;
-
     private static final SQLParserFeature[] FORMAT_DEFAULT_FEATURES = {
             SQLParserFeature.KeepComments,
             SQLParserFeature.EnableSQLBinaryOpExprGroup
@@ -531,8 +529,12 @@ public class SQLUtils {
             case greenplum:
             case edb:
                 return new PGOutputVisitor(out);
+            case gaussdb:
+                return new GaussDbOutputVisitor(out);
             case hologres:
-                return new HoloOutputVisitor(out);
+                return new HologresOutputVisitor(out);
+            case redshift:
+                return new RedshiftOutputVisitor(out);
             case sqlserver:
             case jtds:
                 return new SQLServerOutputVisitor(out);
@@ -541,13 +543,12 @@ public class SQLUtils {
             case odps:
                 return new OdpsOutputVisitor(out);
             case h2:
+            case lealone:
                 return new H2OutputVisitor(out);
             case informix:
                 return new InformixOutputVisitor(out);
             case hive:
                 return new HiveOutputVisitor(out);
-            case ads:
-                return new AdsOutputVisitor(out);
             case blink:
                 return new BlinkOutputVisitor(out);
             case spark:
@@ -555,6 +556,8 @@ public class SQLUtils {
             case presto:
             case trino:
                 return new PrestoOutputVisitor(out);
+            case athena:
+                return new AthenaOutputVisitor(out);
             case clickhouse:
                 return new CKOutputVisitor(out);
             case oscar:
@@ -565,6 +568,8 @@ public class SQLUtils {
                 return new BigQueryOutputVisitor(out);
             case impala:
                 return new ImpalaOutputVisitor(out);
+            case doris:
+                return new DorisOutputVisitor(out);
             default:
                 return new SQLASTOutputVisitor(out, dbType);
         }
@@ -612,6 +617,7 @@ public class SQLUtils {
             case odps:
                 return new OdpsSchemaStatVisitor(repository);
             case h2:
+            case lealone:
                 return new H2SchemaStatVisitor(repository);
             case hive:
                 return new HiveSchemaStatVisitor(repository);
@@ -1580,11 +1586,6 @@ public class SQLUtils {
                     }
 
                     @Override
-                    public boolean visit(HiveCreateTableStatement x) {
-                        return false;
-                    }
-
-                    @Override
                     public boolean visit(OdpsCreateTableStatement x) {
                         return false;
                     }
@@ -1633,11 +1634,6 @@ public class SQLUtils {
 
                     @Override
                     public boolean visit(SQLCreateTableStatement x) {
-                        return false;
-                    }
-
-                    @Override
-                    public boolean visit(HiveCreateTableStatement x) {
                         return false;
                     }
 
@@ -2044,6 +2040,12 @@ public class SQLUtils {
         SQLObject parent = cmp.getParent();
         if (parent instanceof SQLSelectStatement) {
             ((SQLSelectStatement) parent).setSelect(dest);
+            return true;
+        } else if (parent instanceof SQLSubqueryTableSource) {
+            ((SQLSubqueryTableSource) parent).setSelect(dest);
+            return true;
+        } else if (parent instanceof SQLInsertStatement) {
+            ((SQLInsertStatement) parent).setQuery(dest);
             return true;
         }
         return false;

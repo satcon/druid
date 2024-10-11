@@ -22,7 +22,9 @@ import com.alibaba.druid.sql.ast.SQLName;
 import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.ast.statement.SQLInsertStatement;
 import com.alibaba.druid.sql.ast.statement.SQLSelectQueryBlock;
-import com.alibaba.druid.sql.dialect.ads.parser.AdsStatementParser;
+import com.alibaba.druid.sql.dialect.athena.parser.AthenaExprParser;
+import com.alibaba.druid.sql.dialect.athena.parser.AthenaLexer;
+import com.alibaba.druid.sql.dialect.athena.parser.AthenaStatementParser;
 import com.alibaba.druid.sql.dialect.bigquery.parser.BigQueryExprParser;
 import com.alibaba.druid.sql.dialect.bigquery.parser.BigQueryLexer;
 import com.alibaba.druid.sql.dialect.bigquery.parser.BigQueryStatementParser;
@@ -34,15 +36,21 @@ import com.alibaba.druid.sql.dialect.db2.ast.stmt.DB2SelectQueryBlock;
 import com.alibaba.druid.sql.dialect.db2.parser.DB2ExprParser;
 import com.alibaba.druid.sql.dialect.db2.parser.DB2Lexer;
 import com.alibaba.druid.sql.dialect.db2.parser.DB2StatementParser;
+import com.alibaba.druid.sql.dialect.doris.parser.DorisExprParser;
+import com.alibaba.druid.sql.dialect.doris.parser.DorisLexer;
+import com.alibaba.druid.sql.dialect.doris.parser.DorisStatementParser;
+import com.alibaba.druid.sql.dialect.gaussdb.parser.GaussDbExprParser;
+import com.alibaba.druid.sql.dialect.gaussdb.parser.GaussDbLexer;
+import com.alibaba.druid.sql.dialect.gaussdb.parser.GaussDbStatementParser;
 import com.alibaba.druid.sql.dialect.h2.parser.H2ExprParser;
 import com.alibaba.druid.sql.dialect.h2.parser.H2Lexer;
 import com.alibaba.druid.sql.dialect.h2.parser.H2StatementParser;
 import com.alibaba.druid.sql.dialect.hive.parser.HiveExprParser;
 import com.alibaba.druid.sql.dialect.hive.parser.HiveLexer;
 import com.alibaba.druid.sql.dialect.hive.parser.HiveStatementParser;
-import com.alibaba.druid.sql.dialect.holo.parser.HoloExprParser;
-import com.alibaba.druid.sql.dialect.holo.parser.HoloLexer;
-import com.alibaba.druid.sql.dialect.holo.parser.HoloStatementParser;
+import com.alibaba.druid.sql.dialect.hologres.parser.HologresExprParser;
+import com.alibaba.druid.sql.dialect.hologres.parser.HologresLexer;
+import com.alibaba.druid.sql.dialect.hologres.parser.HologresStatementParser;
 import com.alibaba.druid.sql.dialect.impala.parser.ImpalaExprParser;
 import com.alibaba.druid.sql.dialect.impala.parser.ImpalaLexer;
 import com.alibaba.druid.sql.dialect.impala.parser.ImpalaStatementParser;
@@ -62,6 +70,7 @@ import com.alibaba.druid.sql.dialect.oracle.parser.OracleStatementParser;
 import com.alibaba.druid.sql.dialect.oscar.ast.stmt.OscarSelectQueryBlock;
 import com.alibaba.druid.sql.dialect.oscar.parser.OscarExprParser;
 import com.alibaba.druid.sql.dialect.oscar.parser.OscarLexer;
+import com.alibaba.druid.sql.dialect.oscar.visitor.OscarStatementParser;
 import com.alibaba.druid.sql.dialect.phoenix.parser.PhoenixExprParser;
 import com.alibaba.druid.sql.dialect.phoenix.parser.PhoenixLexer;
 import com.alibaba.druid.sql.dialect.phoenix.parser.PhoenixStatementParser;
@@ -72,6 +81,9 @@ import com.alibaba.druid.sql.dialect.postgresql.parser.PGSQLStatementParser;
 import com.alibaba.druid.sql.dialect.presto.parser.PrestoExprParser;
 import com.alibaba.druid.sql.dialect.presto.parser.PrestoLexer;
 import com.alibaba.druid.sql.dialect.presto.parser.PrestoStatementParser;
+import com.alibaba.druid.sql.dialect.redshift.parser.RedshiftExprParser;
+import com.alibaba.druid.sql.dialect.redshift.parser.RedshiftLexer;
+import com.alibaba.druid.sql.dialect.redshift.parser.RedshiftStatementParser;
 import com.alibaba.druid.sql.dialect.spark.parser.SparkLexer;
 import com.alibaba.druid.sql.dialect.spark.parser.SparkStatementParser;
 import com.alibaba.druid.sql.dialect.sqlserver.ast.SQLServerSelectQueryBlock;
@@ -143,14 +155,18 @@ public class SQLParserUtils {
             case postgresql:
             case greenplum:
             case edb:
-            case gaussdb:
                 return new PGSQLStatementParser(sql, features);
+            case gaussdb:
+                return new GaussDbStatementParser(sql, features);
             case hologres:
-                return new HoloStatementParser(sql, features);
+                return new HologresStatementParser(sql, features);
+            case redshift:
+                return new RedshiftStatementParser(sql, features);
             case sqlserver:
             case jtds:
                 return new SQLServerStatementParser(sql, features);
             case h2:
+            case lealone:
                 return new H2StatementParser(sql, features);
             case blink:
                 return new BlinkStatementParser(sql, features);
@@ -165,10 +181,10 @@ public class SQLParserUtils {
             case presto:
             case trino:
                 return new PrestoStatementParser(sql, features);
+            case athena:
+                return new AthenaStatementParser(sql, features);
             case bigquery:
                 return new BigQueryStatementParser(sql, features);
-            case ads:
-                return new AdsStatementParser(sql);
             case spark:
                 return new SparkStatementParser(sql);
             case clickhouse:
@@ -179,6 +195,10 @@ public class SQLParserUtils {
                 return new InformixStatementParser(sql, features);
             case impala:
                 return new ImpalaStatementParser(sql, features);
+            case doris:
+                return new DorisStatementParser(sql, features);
+            case oscar:
+                return new OscarStatementParser(sql, features);
             default:
                 return new SQLStatementParser(sql, dbType, features);
         }
@@ -201,14 +221,18 @@ public class SQLParserUtils {
                 return parser;
             }
             case h2:
+            case lealone:
                 return new H2ExprParser(sql, features);
             case postgresql:
             case greenplum:
             case edb:
-            case gaussdb:
                 return new PGExprParser(sql, features);
+            case gaussdb:
+                return new GaussDbExprParser(sql, features);
             case hologres:
-                return new HoloExprParser(sql, features);
+                return new HologresExprParser(sql, features);
+            case redshift:
+                return new RedshiftExprParser(sql, features);
             case sqlserver:
             case jtds:
                 return new SQLServerExprParser(sql, features);
@@ -221,6 +245,8 @@ public class SQLParserUtils {
             case presto:
             case trino:
                 return new PrestoExprParser(sql, features);
+            case athena:
+                return new AthenaExprParser(sql, features);
             case hive:
                 return new HiveExprParser(sql, features);
             case bigquery:
@@ -233,6 +259,8 @@ public class SQLParserUtils {
                 return new StarRocksExprParser(sql, features);
             case impala:
                 return new ImpalaExprParser(sql, features);
+            case doris:
+                return new DorisExprParser(sql, features);
             default:
                 return new SQLExprParser(sql, dbType, features);
         }
@@ -259,13 +287,18 @@ public class SQLParserUtils {
                 return lexer;
             }
             case h2:
+            case lealone:
                 return new H2Lexer(sql, features);
             case postgresql:
             case greenplum:
             case edb:
                 return new PGLexer(sql, features);
+            case gaussdb:
+                return new GaussDbLexer(sql, features);
             case hologres:
-                return new HoloLexer(sql, features);
+                return new HologresLexer(sql, features);
+            case redshift:
+                return new RedshiftLexer(sql, features);
             case db2:
                 return new DB2Lexer(sql, features);
             case odps:
@@ -275,6 +308,8 @@ public class SQLParserUtils {
             case presto:
             case trino:
                 return new PrestoLexer(sql, features);
+            case athena:
+                return new AthenaLexer(sql, features);
             case spark:
                 return new SparkLexer(sql);
             case oscar:
@@ -289,6 +324,8 @@ public class SQLParserUtils {
                 return new BigQueryLexer(sql, features);
             case impala:
                 return new ImpalaLexer(sql, features);
+            case doris:
+                return new DorisLexer(sql, features);
             default: {
                 Lexer lexer = new Lexer(sql, null, dbType);
                 for (SQLParserFeature feature : features) {
@@ -315,6 +352,7 @@ public class SQLParserUtils {
             case greenplum:
             case edb:
             case hologres:
+            case redshift:
                 return new PGSelectQueryBlock();
             case odps:
                 return new OdpsSelectQueryBlock();

@@ -6,11 +6,14 @@ import com.alibaba.druid.sql.ast.statement.*;
 import com.alibaba.druid.sql.dialect.clickhouse.ast.CKAlterTableUpdateStatement;
 import com.alibaba.druid.sql.dialect.clickhouse.ast.CKCreateTableStatement;
 import com.alibaba.druid.sql.dialect.clickhouse.ast.CKSelectQueryBlock;
+import com.alibaba.druid.sql.dialect.clickhouse.ast.ClickhouseColumnCodec;
+import com.alibaba.druid.sql.dialect.clickhouse.ast.ClickhouseColumnTTL;
 import com.alibaba.druid.sql.visitor.SQLASTOutputVisitor;
+import com.alibaba.druid.util.StringUtils;
 
 import java.util.List;
 
-public class CKOutputVisitor extends SQLASTOutputVisitor implements CKVisitor {
+public class CKOutputVisitor extends SQLASTOutputVisitor implements CKASTVisitor {
     public CKOutputVisitor(StringBuilder appender) {
         super(appender, DbType.clickhouse);
     }
@@ -85,15 +88,30 @@ public class CKOutputVisitor extends SQLASTOutputVisitor implements CKVisitor {
     }
 
     @Override
+    public boolean visit(SQLPartitionByList x) {
+        if (x.getColumns().size() == 1) {
+            x.getColumns().get(0).accept(this);
+        } else {
+            print('(');
+            printAndAccept(x.getColumns(), ", ");
+            print0(")");
+        }
+
+        printPartitionsCountAndSubPartitions(x);
+
+        printSQLPartitions(x.getPartitions());
+        return false;
+    }
+    @Override
     public boolean visit(CKCreateTableStatement x) {
         super.visit((SQLCreateTableStatement) x);
 
-        SQLExpr partitionBy = x.getPartitionBy();
-        if (partitionBy != null) {
-            println();
-            print0(ucase ? "PARTITION BY " : "partition by ");
-            partitionBy.accept(this);
-        }
+//        SQLPartitionBy partitionBy = x.getPartitioning();
+//        if (partitionBy != null) {
+//            println();
+//            print0(ucase ? "PARTITION BY " : "partition by ");
+//            partitionBy.accept(this);
+//        }
 
         SQLOrderBy orderBy = x.getOrderBy();
         if (orderBy != null) {
@@ -200,6 +218,20 @@ public class CKOutputVisitor extends SQLASTOutputVisitor implements CKVisitor {
     }
 
     @Override
+    public boolean visit(ClickhouseColumnCodec x) {
+        print0(ucase ? "CODEC(" : "codec(");
+        printExpr(x.getExpr());
+        print(")");
+        return false;
+    }
+
+    public boolean visit(ClickhouseColumnTTL x) {
+        print0(ucase ? " TTL " : " ttl ");
+        printExpr(x.getExpr());
+        return false;
+    }
+
+    @Override
     protected void printAfterFetch(SQLSelectQueryBlock queryBlock) {
         if (queryBlock instanceof CKSelectQueryBlock) {
             CKSelectQueryBlock ckSelectQueryBlock = ((CKSelectQueryBlock) queryBlock);
@@ -271,5 +303,42 @@ public class CKOutputVisitor extends SQLASTOutputVisitor implements CKVisitor {
         if (x instanceof CKSelectQueryBlock && ((CKSelectQueryBlock) x).isWithTies()) {
             print0(ucase ? " WITH TIES" : " with ties");
         }
+    }
+
+    @Override
+    protected void printCreateTableAfterName(SQLCreateTableStatement x) {
+        if (x instanceof CKCreateTableStatement) {
+            CKCreateTableStatement ckStmt = (CKCreateTableStatement) x;
+            if (!StringUtils.isEmpty(ckStmt.getOnClusterName())) {
+                print0(ucase ? " ON CLUSTER " : " on cluster ");
+                print(ckStmt.getOnClusterName());
+            }
+        }
+    }
+
+    @Override
+    protected void printEngine(SQLCreateTableStatement x) {
+        if (x instanceof CKCreateTableStatement) {
+            SQLExpr engine = ((CKCreateTableStatement) x).getEngine();
+            if (engine != null) {
+                print0(ucase ? " ENGINE = " : " engine = ");
+                engine.accept(this);
+            }
+        }
+    }
+
+    @Override
+    public boolean visit(SQLMapDataType x) {
+        print0(ucase ? "MAP(" : "map(");
+
+        SQLDataType keyType = x.getKeyType();
+        SQLDataType valueType = x.getValueType();
+
+        keyType.accept(this);
+        print0(", ");
+
+        valueType.accept(this);
+        print(')');
+        return false;
     }
 }

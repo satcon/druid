@@ -2,10 +2,13 @@ package com.alibaba.druid.sql.dialect.clickhouse.parser;
 
 import com.alibaba.druid.sql.ast.SQLExpr;
 import com.alibaba.druid.sql.ast.SQLOrderBy;
+import com.alibaba.druid.sql.ast.SQLPartitionBy;
+import com.alibaba.druid.sql.ast.SQLPartitionByList;
 import com.alibaba.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.druid.sql.ast.statement.SQLCreateTableStatement;
 import com.alibaba.druid.sql.ast.statement.SQLPrimaryKey;
 import com.alibaba.druid.sql.dialect.clickhouse.ast.CKCreateTableStatement;
+import com.alibaba.druid.sql.parser.ParserException;
 import com.alibaba.druid.sql.parser.SQLCreateTableParser;
 import com.alibaba.druid.sql.parser.SQLExprParser;
 import com.alibaba.druid.sql.parser.Token;
@@ -20,6 +23,30 @@ public class CKCreateTableParser extends SQLCreateTableParser {
         return new CKCreateTableStatement();
     }
 
+    @Override
+    public SQLPartitionBy parsePartitionBy() {
+        lexer.nextToken();
+        accept(Token.BY);
+        SQLPartitionBy sqlPartitionBy = new SQLPartitionByList();
+        boolean hasParen = false;
+        if (lexer.nextIf(Token.LPAREN)) {
+            hasParen = true;
+        }
+        for (; ; ) {
+            sqlPartitionBy.addColumn(this.exprParser.expr());
+            if (lexer.token() == Token.COMMA) {
+                lexer.nextToken();
+                continue;
+            }
+            break;
+        }
+        if (hasParen) {
+            accept(Token.RPAREN);
+        }
+
+        return sqlPartitionBy;
+    }
+
     protected void parseCreateTableRest(SQLCreateTableStatement stmt) {
         CKCreateTableStatement ckStmt = (CKCreateTableStatement) stmt;
         if (lexer.identifierEquals(FnvHash.Constants.ENGINE)) {
@@ -27,16 +54,13 @@ public class CKCreateTableParser extends SQLCreateTableParser {
             if (lexer.token() == Token.EQ) {
                 lexer.nextToken();
             }
-            stmt.setEngine(
+            ckStmt.setEngine(
                     this.exprParser.expr()
             );
         }
 
         if (lexer.token() == Token.PARTITION) {
-            lexer.nextToken();
-            accept(Token.BY);
-            SQLExpr expr = this.exprParser.expr();
-            ckStmt.setPartitionBy(expr);
+            ckStmt.setPartitionBy(parsePartitionBy());
         }
 
         if (lexer.token() == Token.ORDER) {
@@ -75,6 +99,23 @@ public class CKCreateTableParser extends SQLCreateTableParser {
                 }
 
                 break;
+            }
+        }
+    }
+
+    @Override
+    protected void createTableAfterName(SQLCreateTableStatement createTable) {
+        if (lexer.token() == Token.ON) {
+            lexer.nextToken();
+            acceptIdentifier("CLUSTER");
+            if (lexer.token() == Token.IDENTIFIER) {
+                String clusterName = lexer.stringVal();
+                CKCreateTableStatement ckStmt = (CKCreateTableStatement) createTable;
+                ckStmt.setOnClusterName(clusterName);
+                lexer.nextToken();
+            } else {
+                setErrorEndPos(lexer.pos());
+                throw new ParserException("syntax error, expect IDENTIFIER, actual " + lexer.token() + ", " + lexer.info());
             }
         }
     }

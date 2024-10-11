@@ -6,7 +6,7 @@ import com.alibaba.druid.sql.ast.SQLOrderBy;
 import com.alibaba.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.druid.sql.ast.statement.SQLCreateTableStatement;
 import com.alibaba.druid.sql.ast.statement.SQLPrimaryKey;
-import com.alibaba.druid.sql.dialect.clickhouse.visitor.CKVisitor;
+import com.alibaba.druid.sql.dialect.clickhouse.visitor.CKASTVisitor;
 import com.alibaba.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -15,12 +15,12 @@ import java.util.List;
 public class CKCreateTableStatement extends SQLCreateTableStatement {
     protected final List<SQLAssignItem> settings = new ArrayList<SQLAssignItem>();
     private SQLOrderBy orderBy;
-    private SQLExpr partitionBy;
-
     private SQLPrimaryKey primaryKey;
     private SQLExpr sampleBy;
 
     private SQLExpr ttl;
+    private String onClusterName;
+    private SQLExpr engine;
 
     public CKCreateTableStatement() {
         super(DbType.clickhouse);
@@ -36,18 +36,6 @@ public class CKCreateTableStatement extends SQLCreateTableStatement {
         }
 
         this.orderBy = x;
-    }
-
-    public SQLExpr getPartitionBy() {
-        return partitionBy;
-    }
-
-    public void setPartitionBy(SQLExpr x) {
-        if (x != null) {
-            x.setParent(this);
-        }
-
-        this.partitionBy = x;
     }
 
     public SQLExpr getSampleBy() {
@@ -88,10 +76,29 @@ public class CKCreateTableStatement extends SQLCreateTableStatement {
         this.ttl = ttl;
     }
 
+    public String getOnClusterName() {
+        return onClusterName;
+    }
+
+    public void setOnClusterName(String onClusterName) {
+        this.onClusterName = onClusterName;
+    }
+
+    public SQLExpr getEngine() {
+        return engine;
+    }
+
+    public void setEngine(SQLExpr x) {
+        if (x != null) {
+            x.setParent(this);
+        }
+        this.engine = x;
+    }
+
     @Override
     protected void accept0(SQLASTVisitor v) {
-        if (v instanceof CKVisitor) {
-            CKVisitor vv = (CKVisitor) v;
+        if (v instanceof CKASTVisitor) {
+            CKASTVisitor vv = (CKASTVisitor) v;
             if (vv.visit(this)) {
                 acceptChild(vv);
             }

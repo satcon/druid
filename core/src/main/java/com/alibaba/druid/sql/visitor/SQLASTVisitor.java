@@ -21,7 +21,6 @@ import com.alibaba.druid.sql.ast.*;
 import com.alibaba.druid.sql.ast.expr.*;
 import com.alibaba.druid.sql.ast.statement.*;
 import com.alibaba.druid.sql.dialect.hive.ast.HiveInputOutputFormat;
-import com.alibaba.druid.sql.dialect.hive.stmt.HiveCreateTableStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlKillStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.SQLAlterResourceGroupStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.SQLCreateResourceGroupStatement;
@@ -763,6 +762,13 @@ public interface SQLASTVisitor {
     }
 
     default void endVisit(SQLColumnCheck x) {
+    }
+
+    default boolean visit(SQLColumnDefault x) {
+        return true;
+    }
+
+    default void endVisit(SQLColumnDefault x) {
     }
 
     default boolean visit(SQLExprHint x) {
@@ -2198,13 +2204,6 @@ public interface SQLASTVisitor {
     }
 
     default void endVisit(SQLAdhocTableSource x) {
-    }
-
-    default boolean visit(HiveCreateTableStatement x) {
-        return true;
-    }
-
-    default void endVisit(HiveCreateTableStatement x) {
     }
 
     default boolean visit(HiveInputOutputFormat x) {

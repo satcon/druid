@@ -29,6 +29,8 @@ import com.alibaba.druid.util.FnvHash;
 import java.util.Collection;
 import java.util.List;
 
+import static com.alibaba.druid.sql.parser.Token.LITERAL_ALIAS;
+
 public class SQLServerStatementParser extends SQLStatementParser {
     public SQLServerStatementParser(String sql) {
         super(new SQLServerExprParser(sql));
@@ -183,7 +185,7 @@ public class SQLServerStatementParser extends SQLStatementParser {
                                 || lexer.token() == Token.UNIQUE //
                                 || lexer.token() == Token.CHECK //
                                 || lexer.token() == Token.CONSTRAINT) {
-                            SQLConstraint constraint = this.exprParser.parseConstaint();
+                            SQLConstraint constraint = this.exprParser.parseConstraint();
                             constraint.setParent(item);
                             item.getTableElementList().add((SQLTableElement) constraint);
                         } else if (lexer.token() == Token.TABLESPACE) {
@@ -259,7 +261,7 @@ public class SQLServerStatementParser extends SQLStatementParser {
             insertStatement.setAlias(tableAlias());
         }
 
-        parseInsert0_hinits(insertStatement);
+        parseInsert0Hints(insertStatement, false);
 
         if (lexer.token() == Token.IDENTIFIER && !lexer.stringVal().equalsIgnoreCase("OUTPUT")) {
             insertStatement.setAlias(lexer.stringVal());
@@ -624,5 +626,14 @@ public class SQLServerStatementParser extends SQLStatementParser {
         } else {
             throw new ParserException("TODO : " + lexer.info());
         }
+    }
+
+    protected void alterTableAddRestSpecific(SQLAlterTableStatement stmt) {
+        if (lexer.token() == LITERAL_ALIAS) {
+            SQLAlterTableAddColumn item = parseAlterTableAddColumn();
+            stmt.addItem(item);
+            return;
+        }
+        throw new ParserException("TODO " + lexer.info());
     }
 }

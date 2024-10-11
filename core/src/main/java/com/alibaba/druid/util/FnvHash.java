@@ -366,6 +366,8 @@ public final class FnvHash {
         long SQL_BIG_RESULT = fnv1a_64_lower("SQL_BIG_RESULT");
         long SQL_BUFFER_RESULT = fnv1a_64_lower("SQL_BUFFER_RESULT");
         long CACHE = fnv1a_64_lower("CACHE");
+        long CACHED = fnv1a_64_lower("CACHED");
+        long UNCACHED = fnv1a_64_lower("UNCACHED");
         long SQL_CACHE = fnv1a_64_lower("SQL_CACHE");
         long SQL_NO_CACHE = fnv1a_64_lower("SQL_NO_CACHE");
         long SQL_CALC_FOUND_ROWS = fnv1a_64_lower("SQL_CALC_FOUND_ROWS");
@@ -1152,5 +1154,13 @@ public final class FnvHash {
         long PROPERTIES = fnv1a_64_lower("PROPERTIES");
         long SINGLE = fnv1a_64_lower("SINGLE");
         long RANDOM = fnv1a_64_lower("RANDOM");
+
+        long TABLESPACE = fnv1a_64_lower("TABLESPACE");
+        long DATANODE = fnv1a_64_lower("DATANODE");
+        long DELTA = fnv1a_64_lower("DELTA");
+        long PREFIX = fnv1a_64_lower("PREFIX");
+        long NUMSTR = fnv1a_64_lower("NUMSTR");
+        long NOCOMPRESS = fnv1a_64_lower("NOCOMPRESS");
+        long BROKER = fnv1a_64_lower("BROKER");
     }
 }

@@ -3,13 +3,11 @@ package com.alibaba.druid.sql.dialect.bigquery.parser;
 import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.ast.*;
 import com.alibaba.druid.sql.ast.expr.*;
-import com.alibaba.druid.sql.ast.statement.SQLColumnDefinition;
-import com.alibaba.druid.sql.ast.statement.SQLSelect;
+import com.alibaba.druid.sql.ast.statement.*;
+import com.alibaba.druid.sql.dialect.bigquery.ast.BigQueryCharExpr;
+import com.alibaba.druid.sql.dialect.bigquery.ast.BigQueryDateTimeExpr;
 import com.alibaba.druid.sql.dialect.bigquery.ast.BigQuerySelectAsStruct;
-import com.alibaba.druid.sql.parser.Lexer;
-import com.alibaba.druid.sql.parser.SQLExprParser;
-import com.alibaba.druid.sql.parser.SQLParserFeature;
-import com.alibaba.druid.sql.parser.Token;
+import com.alibaba.druid.sql.parser.*;
 import com.alibaba.druid.util.FnvHash;
 
 import java.util.Arrays;
@@ -22,8 +20,26 @@ public class BigQueryExprParser extends SQLExprParser {
     private static final long[] AGGREGATE_FUNCTIONS_CODES;
 
     static {
-        String[] strings = {"ARRAY_AGG", "AVG", "COUNT", "MAX", "MIN", "STDDEV", "SUM", "ROW_NUMBER",
-                "ROWNUMBER"};
+        String[] strings = {
+                "ANY_VALUE",
+                "ARRAY_AGG",
+                "ARRAY_CONCAT_AGG",
+                "AVG",
+                "BIT_AND",
+                "BIT_OR",
+                "BIT_XOR",
+                "COUNT",
+                "COUNTIF",
+                "GROUPING",
+                "LOGICAL_AND",
+                "LOGICAL_OR",
+                "MAX",
+                "MAX_BY",
+                "MIN",
+                "MIN_BY",
+                "STRING_AGG",
+                "SUM"
+        };
         AGGREGATE_FUNCTIONS_CODES = fnv1a_64_lower(strings, true);
         AGGREGATE_FUNCTIONS = new String[AGGREGATE_FUNCTIONS_CODES.length];
         for (String str : strings) {
@@ -132,7 +148,7 @@ public class BigQueryExprParser extends SQLExprParser {
 
             SQLDataType dataType = this.parseDataType();
             SQLStructDataType.Field field = struct.addField(name, dataType);
-
+            parseFieldConstraints(field);
             if (lexer.nextIfIdentifier(FnvHash.Constants.OPTIONS)) {
                 parseAssignItem(field.getOptions(), field);
             }
@@ -151,6 +167,73 @@ public class BigQueryExprParser extends SQLExprParser {
             accept(Token.GT);
         }
         return struct;
+    }
+
+    private void parseFieldConstraints(SQLStructDataType.Field field) {
+        switch (lexer.token()) {
+            case DEFAULT:
+                field.addConstraint(parseColumnDefault());
+                break;
+            case NOT: {
+                lexer.nextToken();
+                accept(Token.NULL);
+                SQLNotNullConstraint notNull = new SQLNotNullConstraint();
+                field.addConstraint(notNull);
+                break;
+            }
+            case PRIMARY:
+                SQLColumnPrimaryKey pk = new SQLColumnPrimaryKey();
+                lexer.nextToken();
+                accept(Token.KEY);
+                accept(Token.NOT);
+                acceptIdentifier("ENFORCED");
+                pk.setNotEnforced(true);
+                field.addConstraint(pk);
+                break;
+            case REFERENCES:
+                SQLColumnReference ref = parseReference();
+                accept(Token.NOT);
+                acceptIdentifier("ENFORCED");
+                ref.setNotEnforced(true);
+                field.addConstraint(ref);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private SQLColumnDefault parseColumnDefault() {
+        SQLColumnDefault columnDefault = new SQLColumnDefault();
+        accept(Token.DEFAULT);
+        if (lexer.token() == Token.LPAREN) {
+            while (lexer.token() == Token.LPAREN) {
+                accept(Token.LPAREN);
+            }
+
+            columnDefault.setDefaultExpr(this.primary());
+
+            while (lexer.token() == Token.RPAREN) {
+                accept(Token.RPAREN);
+            }
+        } else {
+            columnDefault.setDefaultExpr(this.primary());
+        }
+        return columnDefault;
+    }
+
+    public void parsePrimaryKeyRest(SQLPrimaryKeyImpl primaryKey) {
+        accept(Token.NOT);
+        acceptIdentifier("ENFORCED");
+        primaryKey.setNotEnforced(true);
+        super.parsePrimaryKeyRest(primaryKey);
+    }
+
+    @Override
+    protected void parseForeignKeyRest(SQLForeignKeyImpl foreignKey) {
+        accept(Token.NOT);
+        acceptIdentifier("ENFORCED");
+        foreignKey.setNotEnforced(true);
+        super.parseForeignKeyRest(foreignKey);
     }
 
     public SQLExpr primary() {
@@ -216,6 +299,31 @@ public class BigQueryExprParser extends SQLExprParser {
                     expr = func;
                 }
             }
+        }
+        if (expr instanceof SQLIdentifierExpr) {
+            SQLIdentifierExpr identifierExpr = (SQLIdentifierExpr) expr;
+            String ident = identifierExpr.getName();
+            if (ident.equalsIgnoreCase("b") && lexer.token() == Token.LITERAL_CHARS) {
+                String charValue = lexer.stringVal();
+                lexer.nextToken();
+                expr = new SQLBinaryExpr(charValue);
+            } else if (ident.equalsIgnoreCase("r") && lexer.token() == Token.LITERAL_CHARS) {
+                String charValue = lexer.stringVal();
+                lexer.nextToken();
+                expr = new BigQueryCharExpr(charValue, "r");
+            } else if (ident.equalsIgnoreCase("json") && lexer.token() == Token.LITERAL_CHARS) {
+                String charValue = lexer.stringVal();
+                lexer.nextToken();
+                expr = new BigQueryCharExpr(charValue, "JSON", true);
+            }
+        }
+
+        if (lexer.identifierEquals("AT")) {
+            lexer.nextToken();
+            acceptIdentifier("TIME");
+            acceptIdentifier("ZONE");
+            SQLExpr timeZone = primary();
+            expr = new BigQueryDateTimeExpr(expr, timeZone);
         }
 
         return super.primaryRest(expr);

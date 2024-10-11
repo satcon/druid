@@ -58,6 +58,10 @@ public class StarRocksCreateTableParser extends SQLCreateTableParser {
             createTable.setDimension(true);
         }
 
+        if (lexer.identifierEquals(FnvHash.Constants.TEMPORARY)) {
+            lexer.nextToken();
+            createTable.setTemporary(true);
+        }
         accept(Token.TABLE);
 
         if (lexer.token() == Token.IF || lexer.identifierEquals("IF")) {
@@ -90,7 +94,7 @@ public class StarRocksCreateTableParser extends SQLCreateTableParser {
                         || token == Token.CHECK //
                         || token == Token.CONSTRAINT
                         || token == Token.FOREIGN) {
-                    SQLConstraint constraint = this.exprParser.parseConstaint();
+                    SQLConstraint constraint = this.exprParser.parseConstraint();
                     constraint.setParent(createTable);
                     createTable.getTableElementList().add((SQLTableElement) constraint);
                 } else if (token == Token.TABLESPACE) {
@@ -153,12 +157,6 @@ public class StarRocksCreateTableParser extends SQLCreateTableParser {
             }
         }
 
-        if (lexer.token() == Token.AS) {
-            lexer.nextToken();
-            SQLSelect select = this.createSQLSelectParser().select();
-            createTable.setSelect(select);
-        }
-
         if (lexer.token() == Token.WITH) {
             lexer.nextToken();
             accept(Token.LPAREN);
@@ -190,7 +188,7 @@ public class StarRocksCreateTableParser extends SQLCreateTableParser {
             if (lexer.token() == Token.EQ) {
                 lexer.nextToken();
             }
-            stmt.setEngine(
+            srStmt.setEngine(
                     this.exprParser.expr()
             );
         }
@@ -292,23 +290,30 @@ public class StarRocksCreateTableParser extends SQLCreateTableParser {
                     srStmt.setEvery(every);
                     accept(Token.RPAREN);
                 }
+            } else if (lexer.token() == Token.RPAREN) {
+                lexer.nextToken();
             }
         }
 
         if (lexer.identifierEquals(FnvHash.Constants.DISTRIBUTED)) {
             lexer.nextToken();
             accept(Token.BY);
-            if (lexer.identifierEquals(FnvHash.Constants.HASH) || lexer.identifierEquals(FnvHash.Constants.RANDOM)) {
-                SQLName type = this.exprParser.name();
-                srStmt.setDistributedBy(type);
+            SQLName type = null;
+            if (lexer.identifierEquals(FnvHash.Constants.HASH)) {
+                type = this.exprParser.name();
+                this.exprParser.exprList(srStmt.getDistributedByParameters(), srStmt);
+            } else if (lexer.identifierEquals(FnvHash.Constants.RANDOM)) {
+                type = this.exprParser.name();
             }
-            this.exprParser.exprList(srStmt.getDistributedByParameters(), srStmt);
+            srStmt.setDistributedBy(type);
 
             if (lexer.identifierEquals(FnvHash.Constants.BUCKETS)) {
                 lexer.nextToken();
-                int bucket = lexer.integerValue().intValue();
-                stmt.setBuckets(bucket);
-                lexer.nextToken();
+                if (lexer.token() == Token.LITERAL_INT) {
+                    int bucket = lexer.integerValue().intValue();
+                    stmt.setBuckets(bucket);
+                    lexer.nextToken();
+                }
             }
         }
 
@@ -344,6 +349,32 @@ public class StarRocksCreateTableParser extends SQLCreateTableParser {
                     break;
                 }
             }
+        }
+        Lexer.SavePoint savePoint = lexer.markOut();
+        if (lexer.nextIfIdentifier(FnvHash.Constants.BROKER)
+                && lexer.nextIfIdentifier(FnvHash.Constants.PROPERTIES)) {
+            accept(Token.LPAREN);
+            Map<SQLCharExpr, SQLCharExpr> brokerPropertiesMap = srStmt.getBrokerPropertiesMap();
+            for (; ; ) {
+                parseProperties(brokerPropertiesMap);
+                lexer.nextToken();
+                if (lexer.token() == Token.COMMA) {
+                    lexer.nextToken();
+                }
+                if (lexer.token() == Token.RPAREN) {
+                    lexer.nextToken();
+                    srStmt.setBrokerPropertiesMap(brokerPropertiesMap);
+                    break;
+                }
+            }
+        } else {
+            lexer.reset(savePoint);
+        }
+
+        if (lexer.token() == Token.AS) {
+            lexer.nextToken();
+            SQLSelect select = this.createSQLSelectParser().select();
+            srStmt.setSelect(select);
         }
     }
 

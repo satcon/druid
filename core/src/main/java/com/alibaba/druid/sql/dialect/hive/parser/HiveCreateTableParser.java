@@ -62,7 +62,7 @@ public class HiveCreateTableParser extends SQLCreateTableParser {
                         || token == Token.CHECK //
                         || token == Token.CONSTRAINT
                         || token == Token.FOREIGN) {
-                    SQLConstraint constraint = this.exprParser.parseConstaint();
+                    SQLConstraint constraint = this.exprParser.parseConstraint();
                     constraint.setParent(stmt);
                     stmt.getTableElementList().add((SQLTableElement) constraint);
                 } else if (token == Token.TABLESPACE) {
@@ -97,6 +97,30 @@ public class HiveCreateTableParser extends SQLCreateTableParser {
             }
             SQLSelect select = this.createSQLSelectParser().select();
             stmt.setSelect(select);
+        }
+    }
+
+    protected void parseCreateTableWithSerderPropertie(HiveCreateTableStatement stmt) {
+        if (lexer.token() == Token.WITH) {
+            lexer.nextToken();
+            acceptIdentifier("SERDEPROPERTIES");
+
+            accept(Token.LPAREN);
+
+            for (; ; ) {
+                String key = lexer.stringVal();
+                lexer.nextToken();
+                accept(Token.EQ);
+                SQLExpr value = this.exprParser.primary();
+                stmt.getSerdeProperties().put(key, value);
+                if (lexer.token() == Token.COMMA) {
+                    lexer.nextToken();
+                    continue;
+                }
+                break;
+            }
+
+            accept(Token.RPAREN);
         }
     }
 
@@ -180,6 +204,21 @@ public class HiveCreateTableParser extends SQLCreateTableParser {
             accept(Token.RPAREN);
         }
 
+        if (lexer.identifierEquals(FnvHash.Constants.SORTED)) {
+            parseSortedBy(stmt);
+        }
+
+        if (stmt.getClusteredBy().size() > 0 || stmt.getSortedBy().size() > 0) {
+            accept(Token.INTO);
+            if (lexer.token() == Token.LITERAL_INT) {
+                stmt.setBuckets(lexer.integerValue().intValue());
+                lexer.nextToken();
+            } else {
+                throw new ParserException("into buckets must be integer. " + lexer.info());
+            }
+            acceptIdentifier("BUCKETS");
+        }
+
         if (lexer.nextIfIdentifier(FnvHash.Constants.SKEWED)) {
             accept(Token.BY);
             accept(Token.LPAREN);
@@ -205,30 +244,11 @@ public class HiveCreateTableParser extends SQLCreateTableParser {
                 break;
             }
             accept(Token.RPAREN);
-        }
-
-        if (lexer.identifierEquals(FnvHash.Constants.SORTED)) {
-            parseSortedBy(stmt);
-        }
-
-        if (lexer.token() == Token.ROW
-                || lexer.identifierEquals(FnvHash.Constants.ROW)) {
-            parseRowFormat(stmt);
-        }
-
-        if (lexer.identifierEquals(FnvHash.Constants.SORTED)) {
-            parseSortedBy(stmt);
-        }
-
-        if (stmt.getClusteredBy().size() > 0 || stmt.getSortedBy().size() > 0) {
-            accept(Token.INTO);
-            if (lexer.token() == Token.LITERAL_INT) {
-                stmt.setBuckets(lexer.integerValue().intValue());
-                lexer.nextToken();
-            } else {
-                throw new ParserException("into buckets must be integer. " + lexer.info());
+            if (lexer.nextIfIdentifier(FnvHash.Constants.STORED)) {
+                accept(Token.AS);
+                acceptIdentifier("DIRECTORIES");
+                stmt.setSkewedByStoreAsDirectories(true);
             }
-            acceptIdentifier("BUCKETS");
         }
 
         if (lexer.token() == Token.ROW
@@ -246,6 +266,8 @@ public class HiveCreateTableParser extends SQLCreateTableParser {
                 accept(Token.BY);
                 SQLName name = this.exprParser.name();
                 stmt.setStoredBy(name);
+
+                parseCreateTableWithSerderPropertie(stmt);
             } else {
                 accept(Token.AS);
 
@@ -377,7 +399,7 @@ public class HiveCreateTableParser extends SQLCreateTableParser {
         }
     }
 
-    private void parseSortedBy(HiveCreateTableStatement stmt) {
+    protected void parseSortedBy(HiveCreateTableStatement stmt) {
         lexer.nextToken();
         accept(Token.BY);
         accept(Token.LPAREN);
@@ -393,31 +415,10 @@ public class HiveCreateTableParser extends SQLCreateTableParser {
         accept(Token.RPAREN);
     }
 
-    private void parseRowFormat(HiveCreateTableStatement stmt) {
+    protected void parseRowFormat(HiveCreateTableStatement stmt) {
         SQLExternalRecordFormat format = this.getExprParser().parseRowFormat();
         stmt.setRowFormat(format);
-
-        if (lexer.token() == Token.WITH) {
-            lexer.nextToken();
-            acceptIdentifier("SERDEPROPERTIES");
-
-            accept(Token.LPAREN);
-
-            for (; ; ) {
-                String name = lexer.stringVal();
-                lexer.nextToken();
-                accept(Token.EQ);
-                SQLExpr value = this.exprParser.primary();
-                stmt.getSerdeProperties().put(name, value);
-                if (lexer.token() == Token.COMMA) {
-                    lexer.nextToken();
-                    continue;
-                }
-                break;
-            }
-
-            accept(Token.RPAREN);
-        }
+        parseCreateTableWithSerderPropertie(stmt);
     }
 
     @Override

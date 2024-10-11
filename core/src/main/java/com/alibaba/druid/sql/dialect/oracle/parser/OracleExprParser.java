@@ -1278,7 +1278,7 @@ public class OracleExprParser extends SQLExprParser {
             if (lexer.token() == Token.NULL || lexer.token() == Token.DEFAULT || lexer.token() == Token.LPAREN) {
                 SQLExpr expr = this.expr();
 
-                column.setGeneratedAlawsAs(expr);
+                column.setGeneratedAlwaysAs(expr);
             }
 
             if (lexer.identifierEquals(FnvHash.Constants.IDENTITY)) {
@@ -1665,8 +1665,8 @@ public class OracleExprParser extends SQLExprParser {
         return unique;
     }
 
-    public OracleConstraint parseConstaint() {
-        OracleConstraint constraint = (OracleConstraint) super.parseConstaint();
+    public OracleConstraint parseConstraint() {
+        OracleConstraint constraint = (OracleConstraint) super.parseConstraint();
 
         for (; ; ) {
             if (lexer.token() == Token.EXCEPTIONS) {
@@ -1834,7 +1834,7 @@ public class OracleExprParser extends SQLExprParser {
         return partition;
     }
 
-    protected SQLPartitionBy parsePartitionBy() {
+    public SQLPartitionBy parsePartitionBy() {
         lexer.nextToken();
 
         accept(Token.BY);
@@ -2150,5 +2150,16 @@ public class OracleExprParser extends SQLExprParser {
         this.exprList(partitionByHash.getColumns(), partitionByHash);
         accept(Token.RPAREN);
         return partitionByHash;
+    }
+
+    @Override
+    protected void parseIdentifySpecific() {
+        accept(Token.START);
+        accept(Token.WITH);
+    }
+
+    @Override
+    protected SQLExpr parseSelectItemRest(String ident, long hash_lower) {
+        return null;
     }
 }
